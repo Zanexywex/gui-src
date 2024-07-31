@@ -61,3 +61,4 @@ local function createNotification(title, message, duration)
         end
     end)
 end
+createNotification("Notification", "HWID ADDED !", 3)

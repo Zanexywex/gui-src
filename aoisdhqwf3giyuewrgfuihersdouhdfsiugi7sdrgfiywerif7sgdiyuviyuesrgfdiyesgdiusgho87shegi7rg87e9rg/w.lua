@@ -4,7 +4,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScreenGui = game:GetObjects("rbxassetid://99852798675591")[1]
-ProtectGui(ScreenGui)
 ScreenGui.Enabled = false
 
 if RunService:IsStudio() then

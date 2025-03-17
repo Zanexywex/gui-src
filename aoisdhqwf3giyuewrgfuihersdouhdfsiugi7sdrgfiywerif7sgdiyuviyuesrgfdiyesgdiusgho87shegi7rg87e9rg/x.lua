@@ -1662,7 +1662,7 @@ function Library:createManager(options: table)
 	
 	UI:createKeybind({
 		text = "Hide UI", 
-		default = "Insert",
+		default = "J",
 		callback = function()
 			ScreenGui.Enabled = not ScreenGui.Enabled
 		end,
@@ -1717,7 +1717,7 @@ function Library:createManager(options: table)
 	})
 
 	if isfile(options.folderName .. "/autoload.txt") then
-		loadConfig(readfile(options.folderName .. "/autoload.txt"))
+		readfile(options.folderName .. "/autoload.txt")
 	end
 
 	local themeConfigName = ThemeManager:createTextBox({text = "Theme Config Name"})

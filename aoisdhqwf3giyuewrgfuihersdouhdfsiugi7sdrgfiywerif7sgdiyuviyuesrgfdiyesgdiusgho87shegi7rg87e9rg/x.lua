@@ -1440,8 +1440,8 @@ end
 -- Save Manager, Theme Manager, UI settings
 function Library:createManager(options: table)
 	Utility:validateOptions(options, {
-		folderName = {Default = "Leny", ExpectedType = "string"},
-		icon = {Default = "124718082122263", ExpectedType = "string"}
+		folderName = {Default = "wexxy", ExpectedType = "string"},
+		icon = {Default = "80792392438597", ExpectedType = "string"}
 	})
 
 	local function getJsons() 

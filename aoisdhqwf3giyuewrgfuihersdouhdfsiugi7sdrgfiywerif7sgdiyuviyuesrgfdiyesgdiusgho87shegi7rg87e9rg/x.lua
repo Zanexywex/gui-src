@@ -12,6 +12,7 @@ else
 	ScreenGui.Parent = cloneref(game.CoreGui)
 end
 
+
 local Library = {
 	sizeX = 800,
 	sizeY = 600,
@@ -1574,8 +1575,8 @@ function Library:createManager(options: table)
 	end
 
 	local UI = Library:createTab({text = "UI SETTINGS", icon = options.icon})
-	local Page = UI:createSubTab({text = "SETTINGS"})
-	local UI = Page:createSection({text = "UI"})
+	local Page = UI:createSubTab({text = "SETTINGS", position = "Right",})
+	local UI = Page:createSection({text = "UI",	position = "Left",})
 	local SaveManager = Page:createSection({position = "Right", text = "Save Manager"})
 	local ThemeManager = Page:createSection({position = "Right", text = "Theme Manager"})
 	
@@ -1756,6 +1757,18 @@ function Library:createManager(options: table)
 			loadThemeConfig(ThemeConfigs:getValue())
 		end
 	})
+
+	ThemeManager:createButton({
+		text = "Auto Load Theme Config", 
+		callback = function()
+			writefile(options.folderName .. "/autoloadtheme.txt",ThemeConfigs:getValue())
+		end
+	})
+
+	if isfile(options.folderName .. "/autoloadtheme.txt") then
+		local autotheme = readfile(options.folderName .. "/autoloadtheme.txt")
+		loadThemeConfig(autotheme)
+	end
 
 	self.managerCreated = true
 end

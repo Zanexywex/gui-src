@@ -693,13 +693,12 @@ function Library:createSlider(options: table, parent, scrollingFrame)
 	Utility:validateOptions(options, {
 		text = {Default = "Slider", ExpectedType = "string"},
 		min = {Default = 0, ExpectedType = "number"},
-		def = {Default = 0, ExpectedType = "number"},
 		max = {Default = 100, ExpectedType = "number"},
 		step = {Default = 1, ExpectedType = "number"},
 		callback = {Default = function() end, ExpectedType = "function"}
 	})
 
-	options.default = options.default or options.min or options.def
+	options.default = options.default or options.min
 	options.value = options.default 
 	scrollingFrame = self.ScrollingFrame or scrollingFrame
 

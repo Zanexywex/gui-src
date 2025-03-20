@@ -1663,13 +1663,20 @@ function Library:createManager(options: table)
 		end,
 	})	
 	
-	UI:createKeybind({
+	local heebind = UI:createKeybind({
 		text = "Hide UI", 
 		default = "J",
-		callback = function()
+		callback = function(value)
 			ScreenGui.Enabled = not ScreenGui.Enabled
+			writefile(options.folderName .. "/keybindloader.txt",value)
 		end,
 	})
+
+	if isfile(options.folderName .. "/keybindloader.txt") then
+		local locallocallocalloal = readfile(options.folderName .. "/keybindloader.txt")
+		heebind:updateKeybind({bind = locallocallocalloal})
+	end
+
 
 	UI:createButton({text = "Destroy UI", callback = function() Library:destroy() end})
 

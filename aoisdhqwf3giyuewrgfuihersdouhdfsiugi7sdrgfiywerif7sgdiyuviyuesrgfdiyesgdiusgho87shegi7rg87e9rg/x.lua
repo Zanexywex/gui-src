@@ -23,11 +23,11 @@ local Library = {
 	firstTabDebounce = false,
 	firstSubTabDebounce = false, 
 	processedEvent = false,
-	managerCreated = false, -- Using this as a check to clean up unused Addon objects
+	managerCreated = false,
 	lineIndex = 0,
 
 	Connections = {},
-	Addons = {}, -- To store addon frames to clean up unused ones later, this is my solution to this problem, if you can find a better solution then just create a pull request, thanks.
+	Addons = {},
 	Exclusions = {},
 	SectionFolder = {
 		Left = {},
@@ -42,7 +42,7 @@ local Library = {
 		ColorPicker = {},
 	},
 	Theme = {},
-	DropdownSizes = {}, -- to store previous opened dropdown size to resize scrollingFrame canvassize
+	DropdownSizes = {},
 }
 Library.__index = Library
 
@@ -69,11 +69,24 @@ Library.Theme = Theme
 
 local Popups = ScreenGui.Popups
 
--- Set default size for UI
 local Glow = ScreenGui.Glow
 Glow.Size = UDim2.fromOffset(Library.sizeX, Library.sizeY)
 
 local Background = Glow.Background
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Thickness = 2
+UIStroke.Color = Color3.fromRGB(255, 255, 255)
+UIStroke.Transparency = 0.2
+UIStroke.Parent = Background
+local Gradient = Instance.new("UIGradient")
+Gradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)), 
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+}
+Gradient.Rotation = 90
+Gradient.Parent = UIStroke
+
 
 local Tabs = Background.Tabs
 local Filler = Tabs.Filler
@@ -81,7 +94,6 @@ local Resize = Filler.Resize
 local Line = Filler.Line
 local Title = Tabs.Frame.Title
 
--- Tab resizing stuff
 local tabResizing = false
 Resize.MouseButton1Down:Connect(function()
 	tabResizing = true
@@ -117,7 +129,6 @@ Resize.InputEnded:Connect(function(input)
 	end
 end)
 
--- Mobile compatibility
 Glow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 	for _, data in ipairs(Library.SectionFolder.Right) do
 		if Glow.AbsoluteSize.X <= 660 then
@@ -219,7 +230,7 @@ function Library:createAddons(text, imageButton, scrollingFrame, additionalAddon
 		end,
 
 		createDropdown = function(self, options)
-			options.default = {} -- need to do this for some reason since I clearly implied that default was as table value but guess not?
+			options.default = {}
 			Library:createDropdown(options, Addon.Inner, scrollingFrame)
 		end,
 
@@ -250,7 +261,6 @@ function Library:createAddons(text, imageButton, scrollingFrame, additionalAddon
 
 			if type(originalFunction) == "function" then
 				return function(...)
-					-- Show imageButton if the index name is "create"
 					if string.match(key, "create") then
 						if Addon.Parent == nil then
 							Addon.Parent = Popups
@@ -259,7 +269,6 @@ function Library:createAddons(text, imageButton, scrollingFrame, additionalAddon
 						imageButton.Visible = true
 					end
 
-					-- updateTransparentObjects again to account for the new creation of element after the call.
 					return originalFunction(...), Popup:updateTransparentObjects(Addon)
 				end
 			else
@@ -324,7 +333,6 @@ function Library:createTab(options: table)
 		icon = {Default = "124718082122263", ExpectedType = "string"},
 	})
 
-	-- Change tab size depending on Library.tabSizeX, maybe make resizer for tabs later
 	Background.Tabs.Size = UDim2.new(0, Library.tabSizeX, 1, 0)
 	Background.Pages.Size = UDim2.new(1, -Library.tabSizeX, 1, 0)
 
@@ -1782,7 +1790,6 @@ function Library:createManager(options: table)
 	self.managerCreated = true
 end
 
--- Set users theme choice or default theme when initiliazed, could make this cleaner lol, but nah.
 Theme:registerToObjects({
 	{object = Glow, property = "ImageColor3", theme = {"PrimaryBackgroundColor"}},
 	{object = Background, property = "BackgroundColor3", theme = {"SecondaryBackgroundColor"}},
@@ -1793,11 +1800,9 @@ Theme:registerToObjects({
 	{object = Assets.Pages.Fade, property = "BackgroundColor3", theme = {"PrimaryBackgroundColor"}},
 })
 
--- Make UI Draggable and Resizable
 Utility:draggable(Library, Glow)
 Utility:resizable(Library, Glow.Background.Pages.Resize, Glow)
 
--- Clean up Addon objects with no Addons
 task.spawn(function()
 	while not Library.managerCreated do
 		task.wait()

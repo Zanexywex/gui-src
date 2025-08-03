@@ -52,19 +52,21 @@ local Connections = Library.Connections
 local Exclusions = Library.Exclusions
 
 local Assets = ScreenGui.Assets
+local path = "https://raw.githubusercontent.com/Zanexywex/gui-src/main/aoisdhqwf3giyuewrgfuihersdouhdfsiugi7sdrgfiywerif7sgdiyuviyuesrgfdiyesgdiusgho87shegi7rg87e9rg/Modules/"
+local pathw = "https://raw.githubusercontent.com/Zanexywex/gui-src/refs/heads/main/aoisdhqwf3giyuewrgfuihersdouhdfsiugi7sdrgfiywerif7sgdiyuviyuesrgfdiyesgdiusgho87shegi7rg87e9rg/Modules/"
 local Modules = {
-	Dropdown = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Dropdown.lua", true))(),
-	Toggle = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Toggle.lua", true))(),
-	Popup = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Popup.lua", true))(),
-	Slider = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Slider.lua", true))(),
-	Keybind = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Keybind.lua", true))(),
-	TextBox = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/TextBox.lua", true))(),
-	Navigation = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Navigation.lua", true))(),
-	ColorPicker = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/ColorPicker.lua", true))(),
+	Dropdown = loadstring(game:HttpGet(path.."Dropdown.lua", true))(),
+	Toggle = loadstring(game:HttpGet(path.."Toggle.lua", true))(), 
+	Popup = loadstring(game:HttpGet(pathw.."Popup.lua", true))(),
+	Slider = loadstring(game:HttpGet(path.."Slider.lua", true))(),
+	Keybind = loadstring(game:HttpGet(path.."Keybind.lua", true))(),
+	TextBox = loadstring(game:HttpGet(path.."TextBox.lua", true))(),
+	Navigation = loadstring(game:HttpGet(pathw.."Navigation.lua", true))(),
+	ColorPicker = loadstring(game:HttpGet(path.."ColorPicker.lua", true))(),
 }
 
-local Utility = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Utility.lua", true))()
-local Theme = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Theme.lua", true))()
+local Utility = loadstring(game:HttpGet(path.."Utility.lua", true))()
+local Theme = loadstring(game:HttpGet(path.."Theme.lua", true))()
 Library.Theme = Theme
 
 local Popups = ScreenGui.Popups
@@ -1814,5 +1816,7 @@ task.spawn(function()
 		end
 	end
 end)
+
+
 
 return Library

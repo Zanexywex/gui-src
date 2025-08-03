@@ -1,8 +1,8 @@
 local Navigation = {}
 Navigation.__index = Navigation
 
-local Utility = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Utility.lua", true))()
-local Popup = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/L3nyFromV3rm/Leny-UI/refs/heads/main/Modules/Popup.lua", true))()
+local Utility = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Zanexywex/gui-src/refs/heads/main/aoisdhqwf3giyuewrgfuihersdouhdfsiugi7sdrgfiywerif7sgdiyuviyuesrgfdiyesgdiusgho87shegi7rg87e9rg/Modules/Utility.lua", true))()
+local Popup = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Zanexywex/gui-src/refs/heads/main/aoisdhqwf3giyuewrgfuihersdouhdfsiugi7sdrgfiywerif7sgdiyuviyuesrgfdiyesgdiusgho87shegi7rg87e9rg/Modules/Popup.lua", true))()
 
 function Navigation.new(context: table)
 	local self = setmetatable(context, Navigation)
@@ -61,5 +61,6 @@ function Navigation:hoverEffect(boolean)
 		end
 	end
 end
+
 
 return Navigation

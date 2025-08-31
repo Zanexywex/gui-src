@@ -1153,9 +1153,9 @@ function Starlight:CreateWindow(WindowSettings)
 			loadingScreenLogoChanged = true
 		end end
 
-		mainWindow.Sidebar.Player.PlayerIcon.Image = Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
-		mainWindow.Sidebar.Player.Header.Text = Player.DisplayName
-		mainWindow.Sidebar.Player.subheader.Text = Player.Name
+		mainWindow.Sidebar.Player.PlayerIcon.Image = Players:GetUserThumbnailAsync(--[[Player.UserId]]3841184515, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+		mainWindow.Sidebar.Player.Header.Text = "pfresh"
+		mainWindow.Sidebar.Player.subheader.Text = "dekshaifresh"
 		
 		ContentProvider:PreloadAsync({
 			"rbxassetid://116767744785553", -- cursor

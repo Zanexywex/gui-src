@@ -2109,7 +2109,7 @@ function Starlight:CreateWindow(WindowSettings)
 
 			title.Text = WindowSettings.LoadingSettings and WindowSettings.LoadingSettings.Title or "Starlight Interface Suite"
 			versionLabel.Text = title.Text == "Starlight Interface Suite" and Release or `Starlight UI {Release}`
-			title.playerName.Text = Player.DisplayName
+			title.playerName.Text = "FreeFireMax"
 			playerIcon.Image = Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size352x352)
 
 			Tween(main, {BackgroundTransparency = 0}, nil, Tween.Info("Quint", "InOut", 0.2))
@@ -7738,8 +7738,56 @@ function Starlight:LoadAutoloadTheme()
 	end 
 end
 
+--// ENDSECTION
+
 StarlightUI.Enabled = true
 
+local win = Starlight:CreateWindow({
+	Name = "E San Hub",
+	Subtitle = "Dev : Zanexywex , keneikung",
+	Icon = 74220610337119,
+
+	LoadingEnabled = false,
+	LoadingSettings = {
+		Title = "Starlight Interface Suite",
+		Subtitle = "Welcome to Starlight",
+	},
+
+	BuildWarnings = false,
+	InterfaceAdvertisingPrompts = false,
+	NotifyOnCallbackError = true,
+
+	ConfigurationSettings = {
+		Enabled = false,
+		RootFolder = nil,
+		FolderName = nil,
+	},
+
+	DefaultSize = nil,
+
+	KeySystem = {
+		Enabled = false,
+		Title = "Starlight Key System",
+		Subtitle = "Enter Your Key To Use The Script",
+		Note = "This Key System Only supports strings",
+
+		SaveKey = false,
+		KeyFile = "Key",
+
+		KeyObtainLink = "",
+		Discord = false,
+
+		HttpKey = false,
+		Keys = {"Key"}, -- put the link to a raw content page containing your key.
+	},
+
+	Discord = { -- u can still have it in the home tab, this is just auto join
+		Enabled = false,
+		RememberJoins = false,
+		Link = "zTAc53BSht"
+	},
+
+})
 
 return Starlight
 

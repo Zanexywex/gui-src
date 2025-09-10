@@ -12,8 +12,8 @@ local Starlight = {
 	
 	Minimized = false,
 	Maximized = false,
-	NotificationsOpen = true,
-	DialogOpen = true,
+	NotificationsOpen = false,
+	DialogOpen = false,
 
 	Window = nil,
 	Notifications = nil,

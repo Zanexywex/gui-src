@@ -7742,52 +7742,6 @@ end
 
 StarlightUI.Enabled = true
 
-local win = Starlight:CreateWindow({
-	Name = "E San Hub",
-	Subtitle = "Dev : Zanexywex , keneikung",
-	Icon = 74220610337119,
-
-	LoadingEnabled = false,
-	LoadingSettings = {
-		Title = "Starlight Interface Suite",
-		Subtitle = "Welcome to Starlight",
-	},
-
-	BuildWarnings = false,
-	InterfaceAdvertisingPrompts = false,
-	NotifyOnCallbackError = true,
-
-	ConfigurationSettings = {
-		Enabled = false,
-		RootFolder = nil,
-		FolderName = nil,
-	},
-
-	DefaultSize = nil,
-
-	KeySystem = {
-		Enabled = false,
-		Title = "Starlight Key System",
-		Subtitle = "Enter Your Key To Use The Script",
-		Note = "This Key System Only supports strings",
-
-		SaveKey = false,
-		KeyFile = "Key",
-
-		KeyObtainLink = "",
-		Discord = false,
-
-		HttpKey = false,
-		Keys = {"Key"}, -- put the link to a raw content page containing your key.
-	},
-
-	Discord = { -- u can still have it in the home tab, this is just auto join
-		Enabled = false,
-		RememberJoins = false,
-		Link = "zTAc53BSht"
-	},
-
-})
 
 return Starlight
 

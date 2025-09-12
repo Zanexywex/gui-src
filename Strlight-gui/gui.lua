@@ -7739,6 +7739,8 @@ function Starlight:LoadAutoloadTheme()
 end
 
 
+StarlightUI.Enabled = true
+
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -7796,6 +7798,7 @@ end
 
 
 button.MouseButton1Click:Connect(onActivated)
+
 
 
 return Starlight

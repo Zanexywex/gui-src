@@ -7738,7 +7738,6 @@ function Starlight:LoadAutoloadTheme()
 	end 
 end
 
-
 StarlightUI.Enabled = true
 
 local Players = game:GetService("Players")
@@ -7766,7 +7765,6 @@ screenGui.Parent = playerGui
 local button = Instance.new("ImageButton")
 button.Name = "TopLeftButton"
 button.Parent = screenGui
-
 button.AnchorPoint = Vector2.new(0, 0)
 button.Position = UDim2.new(0, BUTTON_MARGIN.X.Offset, 0, BUTTON_MARGIN.Y.Offset)
 button.Size = BUTTON_SIZE
@@ -7776,7 +7774,6 @@ button.ImageTransparency = 0
 button.ScaleType = Enum.ScaleType.Fit
 button.ZIndex = Z_INDEX
 button.AutoButtonColor = true
-button.Name = "TopLeftButton"
 button.Visible = true
 
 local function adaptSize()
@@ -7793,12 +7790,10 @@ end
 adaptSize()
 
 local function onActivated()
-	StarlightUI.Enabled ~= StarlightUI.Enabled
+    StarlightUI.Enabled = not StarlightUI.Enabled
 end
 
-
 button.MouseButton1Click:Connect(onActivated)
-
 
 
 return Starlight

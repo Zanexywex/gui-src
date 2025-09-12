@@ -7758,7 +7758,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = GUI_NAME
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.IgnoreGuiInset = true -- ปิด inset (ถ้าต้องการให้ชิดขอบจริงๆ)
+screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 local button = Instance.new("ImageButton")
@@ -7775,6 +7775,7 @@ button.ScaleType = Enum.ScaleType.Fit
 button.ZIndex = Z_INDEX
 button.AutoButtonColor = true
 button.Name = "TopLeftButton"
+button.Visible = true
 
 local function adaptSize()
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)

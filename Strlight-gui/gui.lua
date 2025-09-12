@@ -7738,9 +7738,63 @@ function Starlight:LoadAutoloadTheme()
 	end 
 end
 
---// ENDSECTION
 
-StarlightUI.Enabled = true
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local GUI_NAME = "UniversalTopLeftButton"
+local BUTTON_IMAGE = "rbxassetid://6031094678"
+local BUTTON_SIZE = UDim2.new(0.085, 0, 0.085, 0)
+local BUTTON_MARGIN = UDim2.new(0, 12, 0, 12)
+local Z_INDEX = 1000
+
+local existing = playerGui:FindFirstChild(GUI_NAME)
+if existing then
+    existing:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = GUI_NAME
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.IgnoreGuiInset = true -- ปิด inset (ถ้าต้องการให้ชิดขอบจริงๆ)
+screenGui.Parent = playerGui
+
+local button = Instance.new("ImageButton")
+button.Name = "TopLeftButton"
+button.Parent = screenGui
+
+button.AnchorPoint = Vector2.new(0, 0)
+button.Position = UDim2.new(0, BUTTON_MARGIN.X.Offset, 0, BUTTON_MARGIN.Y.Offset)
+button.Size = BUTTON_SIZE
+button.BackgroundTransparency = 1
+button.Image = BUTTON_IMAGE
+button.ImageTransparency = 0
+button.ScaleType = Enum.ScaleType.Fit
+button.ZIndex = Z_INDEX
+button.AutoButtonColor = true
+button.Name = "TopLeftButton"
+
+local function adaptSize()
+    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    if viewport.X <= 360 then
+        button.Size = UDim2.new(0.11, 0, 0.11, 0)
+        button.Position = UDim2.new(0, 8, 0, 8)
+    else
+        button.Size = BUTTON_SIZE
+        button.Position = UDim2.new(0, BUTTON_MARGIN.X.Offset, 0, BUTTON_MARGIN.Y.Offset)
+    end
+end
+
+adaptSize()
+
+local function onActivated()
+	StarlightUI.Enabled ~= StarlightUI.Enabled
+end
+
+
+button.MouseButton1Click:Connect(onActivated)
 
 
 return Starlight

@@ -255,6 +255,120 @@ function CKPV:AddButton(name, text, callback)
 	return btn
 end
 
--- คุณสามารถเพิ่ม AddDropdown ได้ในลักษณะเดียวกัน
+function CKPV:AddDropdown(name, text, default, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 36)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+	btn.Font = Enum.Font.Gotham
+	btn.TextScaled = true
+	btn.Text = text
+	btn.Parent = contentFrame
+	local corner = Instance.new("UICorner", btn)
+	corner.CornerRadius = UDim.new(0, 6)
+
+	local dropFrame = Instance.new("Frame")
+	dropFrame.Size = UDim2.new(0, 160, 0, 0)
+	dropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	dropFrame.ClipsDescendants = true
+	dropFrame.Visible = false
+	dropFrame.ZIndex = 50
+	dropFrame.Parent = screenGui
+
+	local uiStroke = Instance.new("UIStroke", dropFrame)
+	uiStroke.Thickness = 1
+	uiStroke.Color = Color3.fromRGB(80, 80, 80)
+	uiStroke.Transparency = 0.3
+
+	local dropCorner = Instance.new("UICorner", dropFrame)
+	dropCorner.CornerRadius = UDim.new(0, 8)
+
+	local layout = Instance.new("UIListLayout", dropFrame)
+	layout.Padding = UDim.new(0, 3)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local padding = Instance.new("UIPadding", dropFrame)
+	padding.PaddingTop = UDim.new(0, 6)
+	padding.PaddingBottom = UDim.new(0, 6)
+	padding.PaddingLeft = UDim.new(0, 6)
+	padding.PaddingRight = UDim.new(0, 6)
+
+	local items = {}
+	local dropdown = {}
+
+	function dropdown:Add(opt)
+		local optBtn = Instance.new("TextButton")
+		optBtn.Size = UDim2.new(1, 0, 0, 28)
+		optBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		optBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+		optBtn.Font = Enum.Font.Gotham
+		optBtn.TextScaled = true
+		optBtn.Text = opt
+		optBtn.TextXAlignment = Enum.TextXAlignment.Center
+		optBtn.TextYAlignment = Enum.TextYAlignment.Center
+		optBtn.ZIndex = 51
+		optBtn.Parent = dropFrame
+
+		local pad = Instance.new("UIPadding", optBtn)
+		pad.PaddingLeft = UDim.new(0, 6)
+		pad.PaddingRight = UDim.new(0, 6)
+
+		local oc = Instance.new("UICorner", optBtn)
+		oc.CornerRadius = UDim.new(0, 6)
+
+		optBtn.MouseEnter:Connect(function()
+			TweenService:Create(optBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+		end)
+		optBtn.MouseLeave:Connect(function()
+			TweenService:Create(optBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+		end)
+
+		optBtn.MouseButton1Click:Connect(function()
+			btn.Text = text .. ": " .. opt
+			TweenService:Create(dropFrame, TweenInfo.new(0.25), {Size = UDim2.new(0, 160, 0, 0)}):Play()
+			task.delay(0.25, function()
+				dropFrame.Visible = false
+			end)
+			if callback then callback(opt) end
+		end)
+
+		table.insert(items, optBtn)
+	end
+
+	btn.MouseButton1Click:Connect(function()
+		local absPos = btn.AbsolutePosition
+		local guiRightEdge = mainFrame.AbsolutePosition.X + mainFrame.AbsoluteSize.X
+		local offset = 18
+
+		if not dropFrame.Visible then
+			dropFrame.Visible = true
+			local newHeight = math.clamp(#items * 32 + 10, 0, 200)
+			dropFrame.Position = UDim2.fromOffset(guiRightEdge + offset, absPos.Y)
+			TweenService:Create(dropFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 160, 0, newHeight)
+			}):Play()
+		else
+			TweenService:Create(dropFrame, TweenInfo.new(0.25), {Size = UDim2.new(0, 160, 0, 0)}):Play()
+			task.delay(0.25, function()
+				dropFrame.Visible = false
+			end)
+		end
+	end)
+
+	if typeof(default) == "table" then
+		for _, opt in ipairs(default) do
+			dropdown:Add(opt)
+		end
+		btn.Text = text
+	else
+		btn.Text = default or text
+	end
+
+	GUI.Elements[#GUI.Elements+1] = {Frame = btn}
+	GUI:Reorder()
+	return dropdown
+end
+
+
 
 return CKPV

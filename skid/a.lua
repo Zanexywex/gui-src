@@ -408,6 +408,7 @@ function Library:FormatTitle(Text, Tag)
 end;
 
 local function ColorTitleTags(Text, RichText)
+    if Text:find('<font', 1, true) then return Text, true; end;
     local Colors = {Risk = '#FF5050', Beta = '#FFD84D', WIP = '#FF9A3C'};
     if not (Text:find('[Risk]', 1, true) or Text:find('[Beta]', 1, true) or Text:find('[WIP]', 1, true)) then return Text, RichText; end;
     if not RichText then Text = Text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'); end;

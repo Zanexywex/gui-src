@@ -409,6 +409,10 @@ end;
 
 local function ColorTitleTags(Text, RichText)
     local Colors = {Risk = '#FF5050', Beta = '#FFD84D', WIP = '#FF9A3C'};
+    Text = Text:gsub('<font%s+color="(#%x+)"%s*>%[([%a]+)%]</font>', function(Color, Tag)
+        return Colors[Tag] and '[' .. Tag .. ']' or '<font color="' .. Color .. '">[' .. Tag .. ']</font>';
+    end);
+    if Text:find('<font%s') then RichText = true; end;
     if not (Text:find('[Risk]', 1, true) or Text:find('[Beta]', 1, true) or Text:find('[WIP]', 1, true)) then return Text, RichText; end;
     if not RichText then Text = Text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'); end;
     return Text:gsub('%[([%a]+)%]', function(Tag)

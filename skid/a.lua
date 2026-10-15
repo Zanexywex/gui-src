@@ -408,7 +408,6 @@ function Library:FormatTitle(Text, Tag)
 end;
 
 local function ColorTitleTags(Text, RichText)
-    if Text:find('<font', 1, true) then return Text, true; end;
     local Colors = {Risk = '#FF5050', Beta = '#FFD84D', WIP = '#FF9A3C'};
     if not (Text:find('[Risk]', 1, true) or Text:find('[Beta]', 1, true) or Text:find('[WIP]', 1, true)) then return Text, RichText; end;
     if not RichText then Text = Text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'); end;
@@ -3413,7 +3412,7 @@ do
             end);
         end));
         Library:Create('UIListLayout', {SortOrder = Enum.SortOrder.LayoutOrder, Parent = Container});
-        local Group = setmetatable({Container = Container, PopupWindow = PopupWindow}, BaseGroupbox);
+        local Group = setmetatable({Container = Container, PopupWindow = PopupWindow, ParentGroup = Groupbox, SearchTab = Groupbox.SearchTab, SearchSubTab = Groupbox.SearchSubTab, SearchWindow = Groupbox.SearchWindow}, BaseGroupbox);
         function Group:Resize()
             local Height = 8;
             for _, Child in ipairs(Container:GetChildren()) do
@@ -3486,6 +3485,12 @@ do
             Group:Resize();
             PositionPopup();
         end));
+        function Group:Show()
+            Library:SetPopupVisible(Holder, true);
+            Library:Tween(Gear, {Rotation = 90}, 0.2);
+            self:Resize();
+            PositionPopup();
+        end;
         Object.AddonGroup, Object.AddonGear = Group, Gear;
         return Group;
     end;
@@ -3496,6 +3501,14 @@ do
                 local Object = Method(self, ...);
                 if type(Object) == 'table' then
                     if Object ~= self and not Object.ParentGroup then Object.ParentGroup = self; end;
+                    local SearchLabel = Object.TextLabel or Object.Label;
+                    if Object ~= self and SearchLabel and not Object.SearchEntry then
+                        local Idx, Info = ...;
+                        local Text = type(Info) == 'table' and (Info.Text or Info.Title) or type(Idx) == 'table' and Idx.Text or type(Idx) == 'string' and Idx or SearchLabel.ContentText;
+                        Object.SearchEntry = {Text = tostring(Text or ''), Label = SearchLabel, Group = self};
+                        Library.SearchEntries = Library.SearchEntries or {};
+                        table.insert(Library.SearchEntries, Object.SearchEntry);
+                    end;
                     if Object.Value ~= nil and not Object.GetValue then
                         function Object:GetValue() return self.Value; end;
                     end;
@@ -3878,12 +3891,112 @@ function Library:CreateWindow(...)
 
     local WindowLabel = Library:CreateLabel({
         Position = UDim2.new(0, 7, 0, 0);
-        Size = UDim2.new(0, 0, 0, 25);
+        Size = UDim2.new(1, -42, 0, 25);
+        TextTruncate = Enum.TextTruncate.AtEnd;
         Text = Config.Title or '';
         TextXAlignment = Enum.TextXAlignment.Left;
         ZIndex = 1;
         Parent = Inner;
     });
+
+    local SearchButton = Library:Create('TextButton', {BackgroundTransparency = 1, Text = '', Position = UDim2.new(1, -29, 0, 1), Size = UDim2.fromOffset(24, 22), ZIndex = 8, Parent = Inner});
+    local SearchRing = Library:Create('Frame', {BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 4), Size = UDim2.fromOffset(9, 9), ZIndex = 9, Parent = SearchButton});
+    Library:Create('UICorner', {CornerRadius = UDim.new(1, 0), Parent = SearchRing});
+    local SearchStroke = Library:Create('UIStroke', {Color = Library.FontColor, Thickness = 1.5, Parent = SearchRing});
+    local SearchHandle = Library:Create('Frame', {BackgroundColor3 = Library.FontColor, BorderSizePixel = 0, Position = UDim2.fromOffset(14, 13), Size = UDim2.fromOffset(6, 2), Rotation = 45, ZIndex = 9, Parent = SearchButton});
+    Library:AddToRegistry(SearchStroke, {Color = 'FontColor'});
+    Library:AddToRegistry(SearchHandle, {BackgroundColor3 = 'FontColor'});
+    local SearchPopup = Library:Create('CanvasGroup', {BackgroundColor3 = Library.BackgroundColor, BorderColor3 = Library.AccentColor, Size = UDim2.fromOffset(300, 270), Visible = false, ZIndex = 80, Parent = ScreenGui});
+    Library:AddToRegistry(SearchPopup, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'AccentColor'});
+    local SearchInput = Library:Create('TextBox', {BackgroundColor3 = Library.MainColor, BorderColor3 = Library.OutlineColor, Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 28), Text = '', PlaceholderText = 'Search functions...', ClearTextOnFocus = false, TextColor3 = Library.FontColor, Font = Library.Font, TextSize = 14, ZIndex = 81, Parent = SearchPopup});
+    Library:AddToRegistry(SearchInput, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', TextColor3 = 'FontColor'});
+    local SearchResults = Library:Create('ScrollingFrame', {BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 42), Size = UDim2.new(1, -16, 1, -50), CanvasSize = UDim2.fromOffset(0, 0), ScrollBarThickness = 3, ScrollBarImageColor3 = Library.AccentColor, ScrollingDirection = Enum.ScrollingDirection.Y, Active = true, ZIndex = 81, Parent = SearchPopup});
+    Library:AddToRegistry(SearchResults, {ScrollBarImageColor3 = 'AccentColor'});
+    Library:Create('UIListLayout', {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = SearchResults});
+    local function PositionSearch()
+        if not SearchPopup.Visible then return; end;
+        local Position = SearchButton.AbsolutePosition;
+        SearchPopup.Position = UDim2.fromOffset(math.max(0, Position.X + SearchButton.AbsoluteSize.X - 300), Position.Y + SearchButton.AbsoluteSize.Y + 5);
+    end;
+    local function CloseSearch()
+        SearchInput:ReleaseFocus();
+        Library:SetPopupVisible(SearchPopup, false);
+    end;
+    local function NavigateSearch(Entry)
+        CloseSearch();
+        local Group = Entry.Group;
+        if Group.SearchTab then Group.SearchTab:ShowTab(); end;
+        if Group.SearchSubTab then Group.SearchSubTab:Show(); end;
+        local Groups = {};
+        while Group do table.insert(Groups, 1, Group); Group = Group.ParentGroup; end;
+        for _, Parent in ipairs(Groups) do if Parent.Show and Parent.SearchSubTab ~= Parent then Parent:Show(); end; end;
+        task.spawn(function()
+            RunService.RenderStepped:Wait();
+            local Label = Entry.Label;
+            if not Label.Parent then return; end;
+            local Parent = Label.Parent;
+            while Parent and Parent ~= ScreenGui do
+                if Parent:IsA('ScrollingFrame') then
+                    local Scale = Outer.AbsoluteSize.X / math.max(1, Outer.Size.X.Offset);
+                    local Y = Parent.CanvasPosition.Y + (Label.AbsolutePosition.Y - Parent.AbsolutePosition.Y) / math.max(0.01, Scale) - 30;
+                    Library:Tween(Parent, {CanvasPosition = Vector2.new(Parent.CanvasPosition.X, math.max(0, Y))}, 0.2);
+                    break;
+                end;
+                Parent = Parent.Parent;
+            end;
+            local Stroke = Library:Create('UIStroke', {ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Color = Library.AccentColor, Transparency = 1, Thickness = 1.5, Parent = Label});
+            Library:Tween(Stroke, {Transparency = 0}, 0.12);
+            task.delay(0.8, function()
+                if not Stroke.Parent then return; end;
+                Library:Tween(Stroke, {Transparency = 1}, 0.2);
+                task.delay(0.2, function() Stroke:Destroy(); end);
+            end);
+        end);
+    end;
+    local function RefreshSearch()
+        for _, Child in ipairs(SearchResults:GetChildren()) do if Child:IsA('GuiObject') then Child:Destroy(); end; end;
+        local Query = SearchInput.Text:lower();
+        local Matches, Seen = {}, {};
+        for _, Entry in ipairs(Library.SearchEntries or {}) do
+            if Entry.Label.Parent and not Seen[Entry.Label] and Entry.Group.SearchWindow == Window and Entry.Text:lower():find(Query, 1, true) then
+                Seen[Entry.Label] = true;
+                table.insert(Matches, Entry);
+            end;
+        end;
+        table.sort(Matches, function(A, B) return A.Text:lower() < B.Text:lower(); end);
+        for Index, Entry in ipairs(Matches) do
+            local Button = Library:Create('TextButton', {BackgroundColor3 = Library.MainColor, BorderSizePixel = 0, Size = UDim2.new(1, -4, 0, 26), Text = '  ' .. Entry.Text:gsub('<[^>]->', ''), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = Library.FontColor, Font = Library.Font, TextSize = 13, LayoutOrder = Index, ZIndex = 82, Parent = SearchResults});
+            Library:AddToRegistry(Button, {BackgroundColor3 = 'MainColor', TextColor3 = 'FontColor'});
+            Library:OnHighlight(Button, Button, {BackgroundColor3 = 'AccentColorDark', TextColor3 = 'AccentColor'}, {BackgroundColor3 = 'MainColor', TextColor3 = 'FontColor'});
+            Library:GiveSignal(Button.MouseButton1Click:Connect(function() NavigateSearch(Entry); end));
+        end;
+        if #Matches == 0 then Library:CreateLabel({Text = 'No functions found', TextSize = 13, Size = UDim2.new(1, 0, 0, 26), ZIndex = 82, Parent = SearchResults}); end;
+        SearchResults.CanvasPosition = Vector2.new(0, 0);
+        SearchResults.CanvasSize = UDim2.fromOffset(0, math.max(1, #Matches) * 29);
+    end;
+    Library:GiveSignal(SearchInput:GetPropertyChangedSignal('Text'):Connect(RefreshSearch));
+    Library:GiveSignal(SearchButton:GetPropertyChangedSignal('AbsolutePosition'):Connect(PositionSearch));
+    Library:GiveSignal(SearchButton.MouseButton1Click:Connect(function()
+        local State = Library.PopupStates[SearchPopup];
+        if State and State.Visible then CloseSearch(); return; end;
+        RefreshSearch();
+        Library:SetPopupVisible(SearchPopup, true);
+        PositionSearch();
+        SearchInput:CaptureFocus();
+    end));
+    Library:GiveSignal(Outer:GetPropertyChangedSignal('Visible'):Connect(function() if not Outer.Visible then CloseSearch(); end; end));
+    Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+        if not SearchPopup.Visible then return; end;
+        if Input.KeyCode == Enum.KeyCode.Escape then CloseSearch();
+        elseif Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+            local Point = Input.Position;
+            local function Inside(Frame)
+                local P, S = Frame.AbsolutePosition, Frame.AbsoluteSize;
+                return Point.X >= P.X and Point.X <= P.X + S.X and Point.Y >= P.Y and Point.Y <= P.Y + S.Y;
+            end;
+            if not Inside(SearchPopup) and not Inside(SearchButton) then CloseSearch(); end;
+        end;
+    end));
 
     local MainSectionOuter = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
@@ -4154,6 +4267,7 @@ function Library:CreateWindow(...)
             end;
 
             Groupbox.Container = Container;
+            Groupbox.SearchTab, Groupbox.SearchWindow = Tab, Window;
             setmetatable(Groupbox, BaseGroupbox);
 
             Groupbox:AddBlank(3);
@@ -4232,6 +4346,7 @@ function Library:CreateWindow(...)
                 Parent = TabboxButtons;
             });
 
+            Tabbox.SearchTab = Tab;
             function Tabbox:AddTab(Name)
                 local Tab = {};
 
@@ -4345,6 +4460,7 @@ function Library:CreateWindow(...)
                 end);
 
                 Tab.Container = Container;
+                Tab.SearchTab, Tab.SearchSubTab, Tab.SearchWindow = Tabbox.SearchTab, Tab, Window;
                 Tabbox.Tabs[Name] = Tab;
 
                 setmetatable(Tab, BaseGroupbox);

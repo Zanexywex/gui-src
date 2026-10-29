@@ -104,6 +104,17 @@ function Library:SafeCallback(f, ...)
         return;
     end;
 
+    if Library.UIReady == false then
+        local Entry = Library.PendingCallbackMap[f];
+        if Entry then Entry.Args = table.pack(...);
+        else
+            Entry = {Func = f, Args = table.pack(...)};
+            Library.PendingCallbackMap[f] = Entry;
+            table.insert(Library.PendingCallbacks, Entry);
+        end;
+        return;
+    end;
+
     if not Library.NotifyOnError then
         return f(...);
     end;
@@ -159,6 +170,11 @@ function Library:GetConfigData()
     for Flag, Entry in pairs(self.ConfigRegistry) do
         Data[Flag] = ConfigValue(Entry.Object);
     end;
+    Data.__LinoriaTheme = {};
+    for _, Key in ipairs({'AccentColor', 'BackgroundColor', 'MainColor', 'FontColor', 'OutlineColor', 'RiskColor'}) do
+        local Color = self[Key];
+        Data.__LinoriaTheme[Key] = {R = Color.R, G = Color.G, B = Color.B};
+    end;
     return Data;
 end;
 
@@ -203,8 +219,19 @@ end;
 
 function Library:ApplyConfigData(Data)
     if type(Data) ~= 'table' then return false, 'Invalid config'; end;
-    local Pending = {};
+    local Pending, Theme = {}, {};
     local Valid, Reason = pcall(function()
+        if Data.__LinoriaTheme ~= nil then
+            assert(type(Data.__LinoriaTheme) == 'table', 'Invalid theme');
+            for _, Key in ipairs({'AccentColor', 'BackgroundColor', 'MainColor', 'FontColor', 'OutlineColor', 'RiskColor'}) do
+                local Color = Data.__LinoriaTheme[Key];
+                if Color then
+                    assert(type(Color) == 'table', 'Invalid theme color');
+                    for _, Component in ipairs({'R', 'G', 'B'}) do assert(type(Color[Component]) == 'number' and Color[Component] >= 0 and Color[Component] <= 1, 'Invalid theme color'); end;
+                    Theme[Key] = Color3.new(Color.R, Color.G, Color.B);
+                end;
+            end;
+        end;
         for Flag, Value in pairs(Data) do
             local Entry = self.ConfigRegistry[Flag];
             if Entry then
@@ -220,6 +247,12 @@ function Library:ApplyConfigData(Data)
         end;
         for _, Item in ipairs(Pending) do
             if Item.Object.Type == 'Toggle' then Item.Apply(); end;
+        end;
+        for Key, Color in pairs(Theme) do
+            self:UpdateTheme(Key, Color);
+            local Flag = Key == 'AccentColor' and '__Settings_Accent' or '__Settings_' .. Key;
+            local Entry = self.ConfigRegistry[Flag];
+            if Entry and Entry.Object.Type == 'ColorPicker' then Entry.Object:SetValueRGB(Color, Entry.Object.Transparency); end;
         end;
     end);
     self.ApplyingConfig = false;
@@ -290,7 +323,7 @@ end;
 function Library:GetConfigSummary()
     local Lines = {};
     for Flag, Value in pairs(self:GetConfigData()) do
-        table.insert(Lines, Flag .. ' = ' .. (type(Value) == 'table' and HttpService:JSONEncode(Value) or tostring(Value)));
+        if Flag ~= '__LinoriaTheme' then table.insert(Lines, Flag .. ' = ' .. (type(Value) == 'table' and HttpService:JSONEncode(Value) or tostring(Value))); end;
     end;
     table.sort(Lines);
     return table.concat(Lines, '\n');
@@ -400,6 +433,45 @@ function Library:ApplyTextStroke(Inst)
     });
 end;
 
+function Library:EnableMarquee(Label)
+    local Registry = self.RegistryMap[Label];
+    local Clip = self:Create('Frame', {BackgroundTransparency = 1, ClipsDescendants = true, Position = Label.Position, Size = Label.Size, ZIndex = Label.ZIndex, Parent = Label.Parent});
+    Label.Parent = Clip;
+    if Registry and not self.RegistryMap[Label] then self:AddToRegistry(Label, Registry.Properties); end;
+    Label.Position = UDim2.fromOffset(0, 0);
+    Label.Size = UDim2.fromScale(1, 1);
+    Label.TextWrapped = false;
+    Label.TextTruncate = Enum.TextTruncate.None;
+    self.Marquees = self.Marquees or {};
+    self.Marquees[Label] = {Clip = Clip, Time = 0};
+    if self.MarqueeSignal then return; end;
+    self.MarqueeSignal = RenderStepped:Connect(function(Delta)
+        for Text, State in pairs(self.Marquees) do
+            if not Text.Parent or not State.Clip.Parent then
+                self.Marquees[Text] = nil;
+            else
+                local Visible, Parent = true, State.Clip;
+                while Parent and Parent ~= ScreenGui do
+                    if Parent:IsA('GuiObject') and not Parent.Visible then Visible = false; break; end;
+                    Parent = Parent.Parent;
+                end;
+                local Width = State.Clip.AbsoluteSize.X;
+                local Distance = math.max(0, Text.TextBounds.X - Width);
+                if not Visible or State.Text ~= Text.Text or Distance <= 0 then State.Time = 0; end;
+                State.Text = Text.Text;
+                if Visible and Distance > 0 and Width > 0 then
+                    State.Time = (State.Time + Delta) % (1.9 + Distance / 26);
+                    local Offset = math.clamp((State.Time - 1.1) * 26, 0, Distance);
+                    Text.Position = UDim2.new(-Offset / Width, 0, 0, 0);
+                else
+                    Text.Position = UDim2.fromOffset(0, 0);
+                end;
+            end;
+        end;
+    end);
+    self:GiveSignal(self.MarqueeSignal);
+end;
+
 function Library:FormatTitle(Text, Tag)
     if not Tag then return Text; end;
     Tag = tostring(Tag);
@@ -458,7 +530,7 @@ function Library:MakeDraggable(Instance, Cutoff)
         DragInput, DragStart, StartPosition = Input, Input.Position, Instance.Position;
     end));
     Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
-        if not DragInput or not Instance.Parent then return; end;
+        if not DragInput or not Instance.Parent or Instance:GetAttribute('Resizing') then return; end;
         if Input ~= DragInput and not (DragInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement) then return; end;
         local Delta = Input.Position - DragStart;
         local Position = UDim2.new(StartPosition.X.Scale, StartPosition.X.Offset + Delta.X, StartPosition.Y.Scale, StartPosition.Y.Offset + Delta.Y);
@@ -1159,7 +1231,7 @@ do
 
         function ColorPicker:OnChanged(Func)
             ColorPicker.Changed = Func;
-            Func(ColorPicker.Value)
+            Library:SafeCallback(Func, ColorPicker.Value)
         end;
 
         function ColorPicker:Show()
@@ -1534,7 +1606,7 @@ do
 
         function KeyPicker:OnChanged(Callback)
             KeyPicker.Changed = Callback
-            Callback(KeyPicker.Value)
+            Library:SafeCallback(Callback, KeyPicker.Value)
         end
 
         if ParentObj.Addons then
@@ -2178,7 +2250,7 @@ do
 
         function Textbox:OnChanged(Func)
             Textbox.Changed = Func;
-            Func(Textbox.Value);
+            Library:SafeCallback(Func, Textbox.Value);
         end;
 
         Groupbox:AddBlank(5);
@@ -2283,7 +2355,7 @@ do
 
         function Toggle:OnChanged(Func)
             Toggle.Changed = Func;
-            Func(Toggle.Value);
+            Library:SafeCallback(Func, Toggle.Value);
         end;
 
         function Toggle:SetValue(Bool)
@@ -2480,7 +2552,7 @@ do
 
         function Slider:OnChanged(Func)
             Slider.Changed = Func;
-            Func(Slider.Value);
+            Library:SafeCallback(Func, Slider.Value);
         end;
 
         local function Round(Value)
@@ -2688,7 +2760,7 @@ do
 
         local ItemList = Library:CreateLabel({
             Position = UDim2.new(0, 5, 0, 0);
-            Size = UDim2.new(1, -5, 1, 0);
+            Size = UDim2.new(1, -26, 1, 0);
             TextSize = 14;
             Text = '--';
             TextXAlignment = Enum.TextXAlignment.Left;
@@ -2696,6 +2768,7 @@ do
             ZIndex = 7;
             Parent = DropdownInner;
         });
+        Library:EnableMarquee(ItemList);
         Dropdown.TextLabel = Dropdown.TextLabel or ItemList;
 
         Library:OnHighlight(DropdownOuter, DropdownOuter,
@@ -2747,6 +2820,25 @@ do
             BorderColor3 = 'OutlineColor';
         });
 
+        local SearchHeight = Info.Searchable == false and 0 or 28;
+        local DropdownSearch;
+        if SearchHeight > 0 then
+            DropdownSearch = Library:Create('TextBox', {
+                Position = UDim2.fromOffset(4, 3);
+                Size = UDim2.new(1, -8, 0, 22);
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                TextColor3 = Library.FontColor;
+                PlaceholderText = 'Search...';
+                Text = '';
+                ClearTextOnFocus = false;
+                Font = Library.Font;
+                TextSize = 13;
+                ZIndex = 25;
+                Parent = ListInner;
+            });
+            Library:AddToRegistry(DropdownSearch, {BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor', TextColor3 = 'FontColor'});
+        end;
         local Scrolling = Library:Create('ScrollingFrame', {
             Active = true;
             ScrollingEnabled = true;
@@ -2755,7 +2847,8 @@ do
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             CanvasSize = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, 0, 1, 0);
+            Position = UDim2.fromOffset(0, SearchHeight);
+            Size = UDim2.new(1, 0, 1, -SearchHeight);
             ZIndex = 21;
             Parent = ListInner;
 
@@ -2771,7 +2864,7 @@ do
         })
 
         if Dropdown.Multi then
-            Scrolling.Size = UDim2.new(1, 0, 1, -30);
+            Scrolling.Size = UDim2.new(1, 0, 1, -SearchHeight - 30);
             for Index, Text in ipairs({'Add All', 'Remove All'}) do
                 local Action = Library:Create('TextButton', {
                     BackgroundColor3 = Library.MainColor;
@@ -2846,6 +2939,13 @@ do
 
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values;
+            if DropdownSearch and DropdownSearch.Text ~= '' then
+                Values = {};
+                local Query = DropdownSearch.Text:lower();
+                for _, Value in ipairs(Dropdown.Values) do
+                    if tostring(Value):lower():find(Query, 1, true) then table.insert(Values, Value); end;
+                end;
+            end;
             local Buttons = {};
 
             for _, Element in next, Scrolling:GetChildren() do
@@ -2886,6 +2986,7 @@ do
                     ZIndex = 25;
                     Parent = Button;
                 });
+                Library:EnableMarquee(ButtonLabel);
 
                 Library:OnHighlight(Button, Button,
                     { BorderColor3 = 'AccentColor', ZIndex = 24 },
@@ -2967,7 +3068,14 @@ do
             Scrolling.CanvasSize = UDim2.fromOffset(0, (Count * 20) + 1);
 
             local Y = math.clamp(Count * 20, 0, MAX_DROPDOWN_ITEMS * 20) + 1;
-            RecalculateListSize(Y + (Dropdown.Multi and 30 or 0));
+            RecalculateListSize(math.max(Y, 21) + SearchHeight + (Dropdown.Multi and 30 or 0));
+        end;
+
+        if DropdownSearch then
+            Library:GiveSignal(DropdownSearch:GetPropertyChangedSignal('Text'):Connect(function()
+                Scrolling.CanvasPosition = Vector2.new(0, 0);
+                Dropdown:BuildDropdownList();
+            end));
         end;
 
         function Dropdown:SetValues(NewValues)
@@ -3010,6 +3118,7 @@ do
         end;
 
         function Dropdown:CloseDropdown()
+            if DropdownSearch then DropdownSearch:ReleaseFocus(); end;
             Library:SetPopupVisible(ListOuter, false);
             Library.OpenedFrames[ListOuter] = nil;
             Library:Tween(DropdownArrow, {Rotation = 0});
@@ -3017,7 +3126,7 @@ do
 
         function Dropdown:OnChanged(Func)
             Dropdown.Changed = Func;
-            Func(Dropdown.Value);
+            Library:SafeCallback(Func, Dropdown.Value);
         end;
 
         function Dropdown:SetValue(Val)
@@ -3289,7 +3398,7 @@ do
             Layout[Name].Position = {X = math.clamp(Position.X, 0, 1), Y = math.clamp(Position.Y, 0, 1)};
             self:SetValue(Layout);
         end;
-        function Object:OnChanged(Callback) self.Changed = Callback; Callback(self:GetLayout()); end;
+        function Object:OnChanged(Callback) self.Changed = Callback; Library:SafeCallback(Callback, self:GetLayout()); end;
         function Object:SetTitle(Text) Title:SetText(Text); end;
         function Object:SetContent(Text) Content:SetText(Text); end;
         local DragInput, DragName, DragOffset;
@@ -3839,6 +3948,8 @@ function Library:ScrambleText(Frame, Duration)
 end;
 
 function Library:CreateWindow(...)
+    Library.UIReady = false;
+    Library.PendingCallbacks, Library.PendingCallbackMap = {}, {};
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
 
@@ -4672,6 +4783,55 @@ function Library:CreateWindow(...)
     Library:GiveSignal(workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(BindCamera));
     Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateResponsive));
     BindCamera();
+    local ResizeInput, ResizeDirection, ResizeStart, ResizePosition, ResizeSize;
+    local function PointerPosition(Input) return Vector2.new(Input.Position.X, Input.Position.Y); end;
+    for _, Direction in ipairs({{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) do
+        local X, Y = Direction[1], Direction[2];
+        local Handle = Library:Create('Frame', {
+            AnchorPoint = Vector2.new((X + 1) / 2, (Y + 1) / 2);
+            Position = UDim2.fromScale((X + 1) / 2, (Y + 1) / 2);
+            Size = X == 0 and UDim2.new(1, -28, 0, 8) or Y == 0 and UDim2.new(0, 8, 1, -28) or UDim2.fromOffset(14, 14);
+            BackgroundColor3 = Library.AccentColor;
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Active = true;
+            ZIndex = 30;
+            Parent = Outer;
+        });
+        Library:AddToRegistry(Handle, {BackgroundColor3 = 'AccentColor'});
+        Library:OnHighlight(Handle, Handle, {BackgroundTransparency = 0.65}, {BackgroundTransparency = 1});
+        Library:GiveSignal(Handle.InputBegan:Connect(function(Input)
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return; end;
+            ResizeInput, ResizeDirection = Input, Direction;
+            ResizeStart, ResizePosition, ResizeSize = PointerPosition(Input), Outer.AbsolutePosition, Outer.AbsoluteSize;
+            Outer:SetAttribute('Resizing', true);
+        end));
+    end;
+    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+        if not ResizeInput then return; end;
+        if Input ~= ResizeInput and not (ResizeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement) then return; end;
+        local Camera = workspace.CurrentCamera;
+        if not Camera then return; end;
+        local Delta = PointerPosition(Input) - ResizeStart;
+        local X, Y = ResizeDirection[1], ResizeDirection[2];
+        local Viewport = Camera.ViewportSize;
+        local MaxWidth, MaxHeight = math.max(120, Viewport.X * 0.88 - 24), math.max(120, Viewport.Y * 0.82 - 36);
+        local Width = math.clamp(ResizeSize.X + Delta.X * X, math.min(300, MaxWidth), MaxWidth);
+        local Height = math.clamp(ResizeSize.Y + Delta.Y * Y, math.min(280, MaxHeight), MaxHeight);
+        if X == 0 then Width = ResizeSize.X; end;
+        if Y == 0 then Height = ResizeSize.Y; end;
+        local Scale = math.max(0.01, ResponsiveScale.Scale);
+        Config.Size = UDim2.fromOffset(Width / Scale, Height / Scale);
+        Outer.Size = Config.Size;
+        UpdateResponsive();
+        local Size = Vector2.new(Config.Size.X.Offset * ResponsiveScale.Scale, Config.Size.Y.Offset * ResponsiveScale.Scale);
+        local Left = ResizePosition.X + (X == -1 and ResizeSize.X - Size.X or 0);
+        local Top = ResizePosition.Y + (Y == -1 and ResizeSize.Y - Size.Y or 0);
+        Outer.Position = UDim2.fromOffset(Left + Size.X / 2, Top + Size.Y / 2);
+    end));
+    Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
+        if Input == ResizeInput then ResizeInput = nil; Outer:SetAttribute('Resizing', false); end;
+    end));
     LoadUI = function()
         if Loading or LoadingReady then return; end;
         Loading = true;
@@ -4719,7 +4879,7 @@ function Library:CreateWindow(...)
             Library:Tween(Bar, {Size = UDim2.fromScale(Completed / Total, 1)}, 0.12);
         end;
         Library:SetPopupVisible(Card, true);
-        task.spawn(function()
+        local function FinishLoading()
             for Index, Item in ipairs(Items) do
                 if not ScreenGui.Parent then return; end;
                 if Item:IsA('GuiObject') and Item.Parent then local Size = Item.AbsoluteSize; end;
@@ -4751,7 +4911,23 @@ function Library:CreateWindow(...)
             Overlay:Destroy();
             Loading, LoadingReady = false, true;
             Library:Toggle();
-        end);
+            Library.UIReady = true;
+            local Pending = Library.PendingCallbacks;
+            Library.PendingCallbacks, Library.PendingCallbackMap = {}, {};
+            for _, Entry in ipairs(Pending) do
+                task.spawn(function()
+                    if not ScreenGui.Parent then return; end;
+                    local Success, Reason = pcall(function() Library:SafeCallback(Entry.Func, table.unpack(Entry.Args, 1, Entry.Args.n)); end);
+                    if not Success then warn(tostring(Reason)); end;
+                end);
+            end;
+        end;
+        FinishLoading();
+    end;
+    function Window:WaitForLoad()
+        if not Loading and not LoadingReady then LoadUI(); end;
+        while Library.UIReady == false and ScreenGui.Parent do RunService.Heartbeat:Wait(); end;
+        return Library.UIReady == true and ScreenGui.Parent ~= nil;
     end;
 
     PlayEntrance = function()

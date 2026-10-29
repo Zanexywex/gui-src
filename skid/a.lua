@@ -4223,6 +4223,8 @@ function Library:CreateWindow(...)
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            BorderSizePixel = 1;
             Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
@@ -4244,8 +4246,8 @@ function Library:CreateWindow(...)
         local Blocker = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
             BorderSizePixel = 0;
-            Position = UDim2.new(0, 0, 1, 0);
-            Size = UDim2.new(1, 0, 0, 1);
+            Position = UDim2.new(0, 1, 1, -1);
+            Size = UDim2.new(1, -2, 0, 1);
             BackgroundTransparency = 1;
             ZIndex = 3;
             Parent = TabButton;

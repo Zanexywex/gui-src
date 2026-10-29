@@ -57,10 +57,11 @@ local Hue = 0
 table.insert(Library.Signals, RenderStepped:Connect(function(Delta)
     RainbowStep = RainbowStep + Delta
 
-    if RainbowStep >= (1 / 60) then
+    if RainbowStep >= (1 / 30) then
+        local Step = RainbowStep;
         RainbowStep = 0
 
-        Hue = Hue + (1 / 400);
+        Hue = Hue + Step * 0.15;
 
         if Hue > 1 then
             Hue = 0;
@@ -433,7 +434,7 @@ function Library:ApplyTextStroke(Inst)
     });
 end;
 
-function Library:EnableMarquee(Label)
+function Library:EnableMarquee(Label, Gate)
     local Registry = self.RegistryMap[Label];
     local Clip = self:Create('Frame', {BackgroundTransparency = 1, ClipsDescendants = true, Position = Label.Position, Size = Label.Size, ZIndex = Label.ZIndex, Parent = Label.Parent});
     Label.Parent = Clip;
@@ -443,28 +444,38 @@ function Library:EnableMarquee(Label)
     Label.TextWrapped = false;
     Label.TextTruncate = Enum.TextTruncate.None;
     self.Marquees = self.Marquees or {};
-    self.Marquees[Label] = {Clip = Clip, Time = 0};
+    self.Marquees[Label] = {Clip = Clip, Gate = Gate or Clip, Time = 0};
     if self.MarqueeSignal then return; end;
+    local Elapsed = 0;
     self.MarqueeSignal = RenderStepped:Connect(function(Delta)
+        Elapsed = Elapsed + Delta;
+        if Elapsed < 1 / 30 then return; end;
+        Delta, Elapsed = Elapsed, 0;
+        if self.WindowFrame and not self.WindowFrame.Visible then return; end;
+        local Visibility = {};
+        local function IsVisible(Parent)
+            if not Parent or Parent == ScreenGui then return true; end;
+            if Visibility[Parent] ~= nil then return Visibility[Parent]; end;
+            local Visible = not (Parent:IsA('GuiObject') and not Parent.Visible) and IsVisible(Parent.Parent);
+            Visibility[Parent] = Visible;
+            return Visible;
+        end;
         for Text, State in pairs(self.Marquees) do
             if not Text.Parent or not State.Clip.Parent then
                 self.Marquees[Text] = nil;
             else
-                local Visible, Parent = true, State.Clip;
-                while Parent and Parent ~= ScreenGui do
-                    if Parent:IsA('GuiObject') and not Parent.Visible then Visible = false; break; end;
-                    Parent = Parent.Parent;
-                end;
-                local Width = State.Clip.AbsoluteSize.X;
-                local Distance = math.max(0, Text.TextBounds.X - Width);
+                local Visible = IsVisible(State.Gate);
+                local Width = Visible and State.Clip.AbsoluteSize.X or 0;
+                local Distance = Visible and math.max(0, Text.TextBounds.X - Width) or 0;
                 if not Visible or State.Text ~= Text.Text or Distance <= 0 then State.Time = 0; end;
                 State.Text = Text.Text;
                 if Visible and Distance > 0 and Width > 0 then
                     State.Time = (State.Time + Delta) % (1.9 + Distance / 26);
                     local Offset = math.clamp((State.Time - 1.1) * 26, 0, Distance);
-                    Text.Position = UDim2.new(-Offset / Width, 0, 0, 0);
+                    local Position = UDim2.new(-Offset / Width, 0, 0, 0);
+                    if Text.Position ~= Position then Text.Position = Position; end;
                 else
-                    Text.Position = UDim2.fromOffset(0, 0);
+                    if Text.Position.X.Scale ~= 0 then Text.Position = UDim2.fromOffset(0, 0); end;
                 end;
             end;
         end;
@@ -523,7 +534,7 @@ end;
 
 function Library:MakeDraggable(Instance, Cutoff)
     Instance.Active = true;
-    local DragInput, DragStart, StartPosition;
+    local DragInput, DragStart, StartPosition, PendingPosition;
     Library:GiveSignal(Instance.InputBegan:Connect(function(Input)
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return; end;
         if Input.Position.Y - Instance.AbsolutePosition.Y > (Cutoff or 40) then return; end;
@@ -534,10 +545,19 @@ function Library:MakeDraggable(Instance, Cutoff)
         if Input ~= DragInput and not (DragInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement) then return; end;
         local Delta = Input.Position - DragStart;
         local Position = UDim2.new(StartPosition.X.Scale, StartPosition.X.Offset + Delta.X, StartPosition.Y.Scale, StartPosition.Y.Offset + Delta.Y);
-        if Instance.Position ~= Position then Instance.Position = Position; end;
+        PendingPosition = Position;
+    end));
+    Library:GiveSignal(RenderStepped:Connect(function()
+        if PendingPosition and Instance.Parent and not Instance:GetAttribute('Resizing') then
+            if Instance.Position ~= PendingPosition then Instance.Position = PendingPosition; end;
+            PendingPosition = nil;
+        end;
     end));
     Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-        if Input == DragInput then DragInput = nil; end;
+        if Input == DragInput then
+            if PendingPosition and Instance.Parent and not Instance:GetAttribute('Resizing') then Instance.Position = PendingPosition; end;
+            DragInput, PendingPosition = nil, nil;
+        end;
     end));
 end;
 
@@ -709,9 +729,18 @@ function Library:UpdateTheme(Key, Color)
     Key = Keys[Key] or Key;
     assert(Keys[Key] or Key == 'AccentColor' or Key == 'BackgroundColor' or Key == 'MainColor' or Key == 'FontColor' or Key == 'OutlineColor' or Key == 'RiskColor', 'Invalid theme color');
     assert(typeof(Color) == 'Color3', 'Invalid color');
+    if self[Key] == Color then return; end;
     self[Key] = Color;
     if Key == 'AccentColor' then self.AccentColorDark = self:GetDarkerColor(Color); end;
-    self:UpdateColorsUsingRegistry();
+    if not self.ThemeUpdatePending then
+        self.ThemeUpdatePending = true;
+        task.delay(math.max(0, 1 / 30 - (os.clock() - (self.LastThemeUpdate or 0))), function()
+            self.ThemeUpdatePending = false;
+            if not ScreenGui.Parent then return; end;
+            self.LastThemeUpdate = os.clock();
+            self:UpdateColorsUsingRegistry();
+        end);
+    end;
 end;
 
 function Library:UpdateColorsUsingRegistry()
@@ -728,12 +757,13 @@ function Library:UpdateColorsUsingRegistry()
     for Idx, Object in next, Library.Registry do
         for Property, ColorIdx in next, Object.Properties do
             local Active = Library.Animations[Object.Instance];
-            if Active and Active[Property] then Active[Property].Tween:Cancel(); Active[Property] = nil; end;
-            if type(ColorIdx) == 'string' then
-                Object.Instance[Property] = Library[ColorIdx];
-            elseif type(ColorIdx) == 'function' then
-                Object.Instance[Property] = ColorIdx()
-            end
+            local Value;
+            if type(ColorIdx) == 'string' then Value = Library[ColorIdx];
+            elseif type(ColorIdx) == 'function' then Value = ColorIdx(); end;
+            if Value ~= nil then
+                if Active and Active[Property] and Active[Property].Value ~= Value then Active[Property].Tween:Cancel(); Active[Property] = nil; end;
+                if Object.Instance[Property] ~= Value then Object.Instance[Property] = Value; end;
+            end;
         end;
     end;
 end;
@@ -2768,7 +2798,7 @@ do
             ZIndex = 7;
             Parent = DropdownInner;
         });
-        Library:EnableMarquee(ItemList);
+        Library:EnableMarquee(ItemList, DropdownOuter);
         Dropdown.TextLabel = Dropdown.TextLabel or ItemList;
 
         Library:OnHighlight(DropdownOuter, DropdownOuter,
@@ -2986,7 +3016,7 @@ do
                     ZIndex = 25;
                     Parent = Button;
                 });
-                Library:EnableMarquee(ButtonLabel);
+                Library:EnableMarquee(ButtonLabel, ListOuter);
 
                 Library:OnHighlight(Button, Button,
                     { BorderColor3 = 'AccentColor', ZIndex = 24 },
@@ -4141,8 +4171,15 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'BackgroundColor';
     });
 
-    local TabArea = Library:Create('Frame', {
+    local TabArea = Library:Create('ScrollingFrame', {
         BackgroundTransparency = 1;
+        BorderSizePixel = 0;
+        CanvasSize = UDim2.fromOffset(0, 0);
+        AutomaticCanvasSize = Enum.AutomaticSize.X;
+        ScrollingDirection = Enum.ScrollingDirection.X;
+        ScrollBarThickness = 0;
+        Active = true;
+        ClipsDescendants = true;
         Position = UDim2.new(0, 8, 0, 8);
         Size = UDim2.new(1, -16, 0, 21);
         ZIndex = 1;
@@ -4220,6 +4257,7 @@ function Library:CreateWindow(...)
 
         local TabFrame = Library:Create('Frame', {
             Name = 'TabFrame',
+            ClipsDescendants = true;
             BackgroundTransparency = 1;
             Position = UDim2.new(0, 0, 0, 0);
             Size = UDim2.new(1, 0, 1, 0);
@@ -4229,10 +4267,14 @@ function Library:CreateWindow(...)
         });
 
         local LeftSide = Library:Create('ScrollingFrame', {
+            AutomaticCanvasSize = Enum.AutomaticSize.Y;
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Size = UDim2.new(0.5, -12 + 2, 1, -14);
+            ClipsDescendants = true;
+            ScrollingDirection = Enum.ScrollingDirection.Y;
+            Active = true;
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -4242,10 +4284,14 @@ function Library:CreateWindow(...)
         });
 
         local RightSide = Library:Create('ScrollingFrame', {
+            AutomaticCanvasSize = Enum.AutomaticSize.Y;
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
             Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Size = UDim2.new(0.5, -12 + 2, 1, -14);
+            ClipsDescendants = true;
+            ScrollingDirection = Enum.ScrollingDirection.Y;
+            Active = true;
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -4270,11 +4316,6 @@ function Library:CreateWindow(...)
             Parent = RightSide;
         });
 
-        for _, Side in next, { LeftSide, RightSide } do
-            Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                Side.CanvasSize = UDim2.fromOffset(0, Side.UIListLayout.AbsoluteContentSize.Y);
-            end);
-        end;
 
         function Tab:ShowTab()
             Library:ScrambleText(TabButton, 0.25);
@@ -4752,6 +4793,7 @@ function Library:CreateWindow(...)
 
 
     Window.Holder = Outer;
+    Library.WindowFrame = Outer;
     local ResponsiveScale = Library:Create('UIScale', {Scale = 1, Parent = Outer});
     local PreferredScale, CameraConnection = 1;
     local function UpdateResponsive()
@@ -4783,7 +4825,7 @@ function Library:CreateWindow(...)
     Library:GiveSignal(workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(BindCamera));
     Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateResponsive));
     BindCamera();
-    local ResizeInput, ResizeDirection, ResizeStart, ResizePosition, ResizeSize;
+    local ResizeInput, ResizeDirection, ResizeStart, ResizePosition, ResizeSize, ResizePoint;
     local function PointerPosition(Input) return Vector2.new(Input.Position.X, Input.Position.Y); end;
     for _, Direction in ipairs({{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) do
         local X, Y = Direction[1], Direction[2];
@@ -4807,16 +4849,15 @@ function Library:CreateWindow(...)
             Outer:SetAttribute('Resizing', true);
         end));
     end;
-    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+    local function ApplyResize(Point)
         if not ResizeInput then return; end;
-        if Input ~= ResizeInput and not (ResizeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement) then return; end;
         local Camera = workspace.CurrentCamera;
         if not Camera then return; end;
-        local Delta = PointerPosition(Input) - ResizeStart;
+        local Delta = Point - ResizeStart;
         local X, Y = ResizeDirection[1], ResizeDirection[2];
         local Viewport = Camera.ViewportSize;
         local MaxWidth, MaxHeight = math.max(120, Viewport.X * 0.88 - 24), math.max(120, Viewport.Y * 0.82 - 36);
-        local Width = math.clamp(ResizeSize.X + Delta.X * X, math.min(300, MaxWidth), MaxWidth);
+        local Width = math.clamp(ResizeSize.X + Delta.X * X, math.min(550 * ResponsiveScale.Scale, MaxWidth), MaxWidth);
         local Height = math.clamp(ResizeSize.Y + Delta.Y * Y, math.min(280, MaxHeight), MaxHeight);
         if X == 0 then Width = ResizeSize.X; end;
         if Y == 0 then Height = ResizeSize.Y; end;
@@ -4828,9 +4869,25 @@ function Library:CreateWindow(...)
         local Left = ResizePosition.X + (X == -1 and ResizeSize.X - Size.X or 0);
         local Top = ResizePosition.Y + (Y == -1 and ResizeSize.Y - Size.Y or 0);
         Outer.Position = UDim2.fromOffset(Left + Size.X / 2, Top + Size.Y / 2);
+    end;
+    Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+        if not ResizeInput then return; end;
+        if Input ~= ResizeInput and not (ResizeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement) then return; end;
+        ResizePoint = PointerPosition(Input);
+    end));
+    Library:GiveSignal(RenderStepped:Connect(function()
+        if ResizeInput and ResizePoint then
+            local Point = ResizePoint;
+            ResizePoint = nil;
+            ApplyResize(Point);
+        end;
     end));
     Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-        if Input == ResizeInput then ResizeInput = nil; Outer:SetAttribute('Resizing', false); end;
+        if Input == ResizeInput then
+            if ResizePoint then ApplyResize(ResizePoint); end;
+            ResizeInput, ResizePoint = nil, nil;
+            Outer:SetAttribute('Resizing', false);
+        end;
     end));
     LoadUI = function()
         if Loading or LoadingReady then return; end;

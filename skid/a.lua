@@ -5064,6 +5064,26 @@ function Library:CreateWindow(...)
             Violet = Color3.fromRGB(130, 82, 255);
             Rose = Color3.fromRGB(235, 99, 151);
             Blue = Color3.fromRGB(91, 163, 255);
+            Crimson = Color3.fromRGB(235, 64, 85);
+            Ruby = Color3.fromRGB(224, 36, 94);
+            Coral = Color3.fromRGB(255, 127, 110);
+            Peach = Color3.fromRGB(255, 183, 143);
+            Orange = Color3.fromRGB(255, 143, 51);
+            Amber = Color3.fromRGB(255, 185, 47);
+            Gold = Color3.fromRGB(240, 204, 92);
+            Lemon = Color3.fromRGB(238, 231, 79);
+            Lime = Color3.fromRGB(162, 226, 66);
+            Emerald = Color3.fromRGB(49, 200, 133);
+            Mint = Color3.fromRGB(119, 235, 192);
+            Teal = Color3.fromRGB(46, 190, 180);
+            Cyan = Color3.fromRGB(61, 212, 239);
+            Sky = Color3.fromRGB(117, 196, 255);
+            Ocean = Color3.fromRGB(45, 126, 224);
+            Indigo = Color3.fromRGB(105, 113, 235);
+            Lavender = Color3.fromRGB(184, 157, 245);
+            Magenta = Color3.fromRGB(228, 88, 232);
+            Fuchsia = Color3.fromRGB(255, 81, 177);
+            Silver = Color3.fromRGB(198, 208, 222);
         };
         local function SetAccent(Color)
             Library:UpdateTheme('Accent', Color);
@@ -5079,7 +5099,7 @@ function Library:CreateWindow(...)
             });
         end;
         Themes:AddDropdown('__Settings_Preset', {
-            Text = 'Preset'; Values = {'Sakura', 'Violet', 'Rose', 'Blue'}; AllowNull = true;
+            Text = 'Preset'; Values = {'Sakura', 'Violet', 'Rose', 'Blue', 'Crimson', 'Ruby', 'Coral', 'Peach', 'Orange', 'Amber', 'Gold', 'Lemon', 'Lime', 'Emerald', 'Mint', 'Teal', 'Cyan', 'Sky', 'Ocean', 'Indigo', 'Lavender', 'Magenta', 'Fuchsia', 'Silver'}; AllowNull = true;
             NoConfig = true;
             Callback = function(Value)
                 if Presets[Value] then Options.__Settings_Accent:SetValueRGB(Presets[Value]); end;

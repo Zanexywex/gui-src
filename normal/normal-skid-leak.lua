@@ -508,7 +508,7 @@ local function AddElement(Box, Frame, SearchName, NoSearch)
     Frame.LayoutOrder = Box.Order
     Frame.Parent = Box.Container
     if Box.Groupbox and not NoSearch then
-        table.insert(Box.Groupbox.Elements, { Frame = Frame, Name = string.lower(tostring(SearchName or '')) })
+        table.insert(Box.Groupbox.Elements, { Frame = Frame, Text = tostring(SearchName or ''), Name = string.lower(tostring(SearchName or '')) })
     elseif Box.SearchEntry and SearchName then
         Box.SearchEntry.Name = Box.SearchEntry.Name .. ' ' .. string.lower(tostring(SearchName))
     end
@@ -3857,6 +3857,159 @@ function Library:CreateWindow(...)
     end
     UpdateName(false)
 
+    Header.ZIndex = 10
+    local Results = Create('Frame', {
+        AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 56), Size = UDim2.fromOffset(290, 0),
+        Visible = false, ClipsDescendants = true, ZIndex = 10, Parent = Header,
+    })
+    Themed(Results, { BackgroundColor3 = 'Card' }); Corner(Results, 8)
+    Stroke(Results)
+    local ResList = Create('ScrollingFrame', {
+        BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 2, ZIndex = 10, Parent = Results,
+    })
+    Themed(ResList, { ScrollBarImageColor3 = 'Accent' })
+    ListLayout(ResList, 2); Padding(ResList, 6, 6, 6, 6)
+    local ResultRows = {}
+
+    local function Flash(Group)
+        local Card = Group.Card
+        Tween(Group.CardStroke, { Color = Library.Theme.Accent }, 0.15)
+        Tween(Card, { BackgroundColor3 = Lerp('Card', 'Accent', 0.12) }, 0.15)
+        task.delay(0.9, function()
+            Tween(Group.CardStroke, { Color = Library.Theme.Stroke }, 0.5)
+            Tween(Card, { BackgroundColor3 = Library.Theme.Card }, 0.5)
+        end)
+    end
+
+    function Window:GoTo(Tab, Group)
+        if Tab.Category and not Tab.Category.Open then Tab.Category:SetOpen(true) end
+        Tab:ShowTab()
+        if not Group then return end
+        task.spawn(function()
+            RunService.RenderStepped:Wait()
+            RunService.RenderStepped:Wait()
+            local Column = Group.Column
+            if Column and Group.Card.Parent == Column then
+                local S = Library.UIScale and Library.UIScale.Scale or 1
+                if S <= 0 then S = 1 end
+                local Y = (Group.Card.AbsolutePosition.Y - Column.AbsolutePosition.Y) / S + Column.CanvasPosition.Y - 6
+                Column.CanvasPosition = Vector2.new(0, math.max(0, Y))
+            end
+            Flash(Group)
+        end)
+    end
+
+    local function HideResults()
+        if not Results.Visible then return end
+        Tween(Results, { Size = UDim2.fromOffset(290, 0) }, 0.15)
+        local Token = (Window.ResultsToken or 0) + 1
+        Window.ResultsToken = Token
+        task.delay(0.16, function() if Window.ResultsToken == Token then Results.Visible = false end end)
+    end
+    Window.HideSearchResults = HideResults
+
+    local function Pick(R)
+        HideResults()
+        SearchBox.Text = ''
+        SearchBox:ReleaseFocus()
+        Window:GoTo(R.Tab, R.Group)
+    end
+
+    local function FindAll(Query)
+        local Found = {}
+        for _, Tab in ipairs(Window.Tabs) do
+            local Path = (Tab.CategoryName and (Tab.CategoryName .. '  ›  ') or '') .. Tab.Name
+            for _, Group in ipairs(Tab.Groupboxes) do
+                if string.find(string.lower(Group.Name), Query, 1, true) then
+                    table.insert(Found, { Tab = Tab, Group = Group, Title = Group.Name, Path = Path })
+                end
+                for _, El in ipairs(Group.Elements) do
+                    if El.Name ~= '' and string.find(El.Name, Query, 1, true) then
+                        table.insert(Found, { Tab = Tab, Group = Group, Title = El.Text, Path = Path .. '  ·  ' .. Group.Name })
+                    end
+                end
+                if #Found >= 40 then return Found end
+            end
+            if string.find(string.lower(Tab.Name), Query, 1, true) and #Tab.Groupboxes == 0 then
+                table.insert(Found, { Tab = Tab, Title = Tab.Name, Path = Tab.CategoryName or '' })
+            end
+        end
+        return Found
+    end
+
+    local NoResults = Text({ Text = 'No results', ColorKey = 'DimText', TextSize = 12, RichText = false, Visible = false,
+        TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 0, ZIndex = 10, Parent = ResList })
+
+    local function GetRow(I)
+        local Row = ResultRows[I]
+        if Row then return Row end
+        Row = { Button = Create('TextButton', {
+            AutoButtonColor = false, Text = '', BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38),
+            LayoutOrder = I, ZIndex = 10, Parent = ResList,
+        }) }
+        Themed(Row.Button, { BackgroundColor3 = 'Hover' }); Corner(Row.Button, 6)
+        Row.Title = Text({ Text = '', RichText = false, Font = Library.FontMedium, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 16), ZIndex = 10, Parent = Row.Button })
+        Row.Path = Text({ Text = '', RichText = false, ColorKey = 'DimText', TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = UDim2.fromOffset(10, 20), Size = UDim2.new(1, -20, 0, 14), ZIndex = 10, Parent = Row.Button })
+        Row.Button.MouseEnter:Connect(function() Tween(Row.Button, { BackgroundTransparency = 0 }, 0.12) end)
+        Row.Button.MouseLeave:Connect(function() Tween(Row.Button, { BackgroundTransparency = 1 }, 0.12) end)
+        Row.Button.MouseButton1Click:Connect(function() if Row.Result then Pick(Row.Result) end end)
+        ResultRows[I] = Row
+        return Row
+    end
+
+    function Window:ShowSearchResults(Query)
+        if Query == '' then
+            self.SearchFound = nil
+            HideResults()
+            return
+        end
+        local Found = FindAll(Query)
+        self.SearchFound = Found
+        for I = 1, math.max(#Found, #ResultRows) do
+            local R = Found[I]
+            if R then
+                local Row = GetRow(I)
+                Row.Result = R
+                Row.Title.Text = R.Title
+                Row.Path.Text = R.Path
+                Row.Button.BackgroundTransparency = 1
+                Row.Button.Visible = true
+            elseif ResultRows[I] then
+                ResultRows[I].Result = nil
+                ResultRows[I].Button.Visible = false
+            end
+        end
+        NoResults.Visible = #Found == 0
+        local Height = math.min(math.max(#Found, 1) * 40 + 12, 300)
+        Window.ResultsToken = (Window.ResultsToken or 0) + 1
+        if not Results.Visible then
+            Results.Visible = true
+            Results.Size = UDim2.fromOffset(290, 0)
+        end
+        Tween(Results, { Size = UDim2.fromOffset(290, Height) }, 0.2)
+        ResList.CanvasPosition = Vector2.new(0, 0)
+    end
+
+    SearchBox.Focused:Connect(function()
+        if SearchBox.Text ~= '' then Window:ShowSearchResults(string.lower(SearchBox.Text)) end
+    end)
+    SearchBox.FocusLost:Connect(function(Enter)
+        local Found = Window.SearchFound
+        if Enter and SearchBox.Text ~= '' and Found and Found[1] then Pick(Found[1]) end
+    end)
+    Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input)
+        if not Results.Visible or not IsClick(Input) then return end
+        local Pt = PointerOf(Input)
+        for _, F in ipairs({ Results, SearchBg }) do
+            local P, Sz = F.AbsolutePosition, F.AbsoluteSize
+            if Pt.X >= P.X and Pt.X <= P.X + Sz.X and Pt.Y >= P.Y and Pt.Y <= P.Y + Sz.Y then return end
+        end
+        HideResults()
+    end))
+
     function Window:ApplySearch()
         local Tab = self.ActiveTab
         if not Tab then return end
@@ -3872,7 +4025,10 @@ function Library:CreateWindow(...)
             Group.Card.Visible = TitleMatch or Any
         end
     end
-    SearchBox:GetPropertyChangedSignal('Text'):Connect(function() Window:ApplySearch() end)
+    SearchBox:GetPropertyChangedSignal('Text'):Connect(function()
+        Window:ApplySearch()
+        Window:ShowSearchResults(string.lower(SearchBox.Text))
+    end)
 
     local function LayoutFile() return Library.Folder .. '/' .. tostring(Config.LayoutName or 'layout') .. '.json' end
 
@@ -4385,7 +4541,12 @@ function Library:CreateWindow(...)
         end
         Head.MouseButton1Click:Connect(function() Category:SetOpen(not Category.Open) end)
 
-        function Category:AddTab(TabName) return Window:_AddTab(TabName, Items, 28) end
+        function Category:AddTab(TabName)
+            local Tab = Window:_AddTab(TabName, Items, 28)
+            Tab.CategoryName = Name
+            Tab.Category = Category
+            return Tab
+        end
         return Category
     end
 

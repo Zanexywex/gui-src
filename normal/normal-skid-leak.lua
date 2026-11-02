@@ -3499,6 +3499,7 @@ function Library:Toggle(State)
         Tween(Ghost.Logo, { TextTransparency = 0 }, 0.3)
         task.delay(0.4, function()
             if Token ~= Ghost.Token then return end
+            if self.Body then self.Body.Parent = Main end
             Main.Visible = true
             Tween(G, { BackgroundTransparency = 1 }, 0.22)
             Tween(Ghost.Stroke, { Transparency = 1 }, 0.22)
@@ -3517,6 +3518,7 @@ function Library:Toggle(State)
         Ghost.Stroke.Transparency = 0
         Ghost.Logo.TextTransparency = 0
         Main.Visible = false
+        if self.Body then self.Body.Parent = nil end
         if IslandPos then
             local Info = { Position = IslandPos, Size = IslandSize, BackgroundColor3 = IslandBg }
             Tween(G, Info, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
@@ -4010,6 +4012,7 @@ function Library:CreateWindow(...)
             Library:CloseDropdown()
             Window:ApplySearch()
 
+            Page.Parent = Pages
             Page.Visible = true
             Page.Position = UDim2.fromOffset(0, 18)
             Window.PageCover.Visible = true
@@ -4031,6 +4034,7 @@ function Library:CreateWindow(...)
 
         function Tab:HideTab()
             Page.Visible = false
+            Page.Parent = nil -- hidden tabs are detached so their text/layout updates cost nothing
             Tween(Bar, { Size = UDim2.fromOffset(3, 0) }, 0.2)
             Tween(Label, { Position = UDim2.fromOffset(Indent, 0) }, 0.25)
             Tween(Btn, { BackgroundTransparency = 1 }, 0.25)
@@ -4283,7 +4287,7 @@ function Library:CreateWindow(...)
         function Tab:AddRightTabbox() return Tabbox(2) end
 
         table.insert(Window.Tabs, Tab)
-        if #Window.Tabs == 1 then Tab:ShowTab() end
+        if #Window.Tabs == 1 then Tab:ShowTab() else Page.Parent = nil end
         return Tab
     end
 

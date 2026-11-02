@@ -3564,12 +3564,51 @@ function Library:CreateWindow(...)
     local Scale = Create('UIScale', { Parent = Outer })
     Library.Main, Library.Body, Library.UIScale, Library.MainStroke = Outer, Main, Scale, MainStroke
 
-    local Camera = workspace.CurrentCamera
-    local Viewport = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
-    Library.BaseScale = Config.Scale or math.clamp(math.min(
-        Viewport.X / (Config.Size.X.Offset + 40), Viewport.Y / (Config.Size.Y.Offset + 40)), 0.45, 1)
-    Scale.Scale = Library.BaseScale
-    Library.AutoScale = Library.BaseScale
+    -- Auto size: shrink the whole UI to fit the screen (phones, small windows),
+    -- re-fit when the screen changes (rotation / resize). The Settings "UI scale"
+    -- slider multiplies on top of this.
+    Library.ScalePercent = Library.ScalePercent or 1
+    local function ScreenSize()
+        local Screen = ScreenGui.AbsoluteSize
+        if Screen.X < 100 or Screen.Y < 100 then
+            local Camera = workspace.CurrentCamera
+            Screen = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+        end
+        return Screen
+    end
+
+    local function KeepOnScreen()
+        local Screen = ScreenSize()
+        local P, S = Outer.AbsolutePosition, Outer.AbsoluteSize
+        local DX, DY = 0, 0
+        if S.X <= Screen.X then
+            if P.X < 0 then DX = -P.X elseif P.X + S.X > Screen.X then DX = Screen.X - (P.X + S.X) end
+        end
+        if S.Y <= Screen.Y then
+            if P.Y < 0 then DY = -P.Y elseif P.Y + S.Y > Screen.Y then DY = Screen.Y - (P.Y + S.Y) end
+        end
+        if DX ~= 0 or DY ~= 0 then Outer.Position = Outer.Position + UDim2.fromOffset(DX, DY) end
+    end
+
+    function Library:UpdateScale()
+        if Config.Scale then
+            self.AutoScale = Config.Scale
+        elseif Config.AutoScale == false then
+            self.AutoScale = 1
+        else
+            local Screen = ScreenSize()
+            local Touch = UserInputService.TouchEnabled
+            local Margin = Touch and 16 or 40
+            local Top = Config.Island ~= false and 52 or 0
+            local W, H = math.max(Outer.Size.X.Offset, 1), math.max(Outer.Size.Y.Offset, 1)
+            self.AutoScale = math.clamp(math.min((Screen.X - Margin) / W, (Screen.Y - Margin - Top) / H), Config.MinScale or 0.4, Config.MaxScale or 1)
+        end
+        self.BaseScale = self.AutoScale * (self.ScalePercent or 1)
+        Scale.Scale = self.BaseScale
+        task.defer(KeepOnScreen)
+    end
+    Library:UpdateScale()
+    Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(function() Library:UpdateScale() end))
 
     local Sidebar = Blank({ Size = UDim2.new(0, SIDEBAR_W, 1, 0), Parent = Main })
     local Logo = Text({
@@ -4355,7 +4394,10 @@ function Library:CreateWindow(...)
             Window:SaveLayout()
         end
     end))
-    function Window:SetSize(W, H) Outer.Size = UDim2.fromOffset(math.max(W, MinSize.X), math.max(H, MinSize.Y)) end
+    function Window:SetSize(W, H)
+        Outer.Size = UDim2.fromOffset(math.max(W, MinSize.X), math.max(H, MinSize.Y))
+        if not Resizing then Library:UpdateScale() end
+    end
 
     if Config.Island ~= false then Library:CreateIsland() end
     if Config.MobileButton ~= false and UserInputService.TouchEnabled and Config.Island == false then
@@ -4844,7 +4886,10 @@ function Library:AddSettingsTab(Window)
     })
     ThemeBox:AddSlider('__UIScale', {
         Text = 'UI scale', Min = 50, Max = 150, Default = 100, Suffix = '%', NoConfig = true,
-        Callback = function(V) Window:SetScale((Library.AutoScale or 1) * V / 100) end,
+        Callback = function(V)
+            Library.ScalePercent = V / 100
+            Library:UpdateScale()
+        end,
     })
     ThemeBox:AddButton({ Text = 'Reset theme', Func = function()
         Options.__ThemePreset:SetValue('Normal')

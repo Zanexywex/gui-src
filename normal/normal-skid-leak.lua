@@ -3443,55 +3443,97 @@ function Library:CloseDropdown()
     self:UpdateCatchers()
 end
 
+-- Open / close animation. The real window only shows or hides; a light "ghost" card
+-- (a few instances) does the morph to / from the island, so big UIs don't drop FPS.
+function Library:GetGhost()
+    if self.Ghost then return self.Ghost end
+    local Frame = Create('Frame', {
+        Name = 'Ghost', AnchorPoint = Vector2.new(0.5, 0.5), BorderSizePixel = 0, Visible = false,
+        ClipsDescendants = true, ZIndex = 5, Parent = ScreenGui,
+    })
+    Themed(Frame, { BackgroundColor3 = 'Background' })
+    local GCorner = Corner(Frame, 12)
+    local GStroke = Stroke(Frame)
+    local Logo = Text({
+        Text = self.Title or '', Font = self.FontBold, TextSize = 26, ColorKey = 'Accent', RichText = false,
+        TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -20, 0, 34), ZIndex = 6, Parent = Frame,
+    })
+    self.Ghost = { Frame = Frame, Corner = GCorner, Stroke = GStroke, Logo = Logo, Token = 0 }
+    return self.Ghost
+end
+
 function Library:Toggle(State)
     local Main = self.Main
     if not Main then return end
     if State == nil then State = not self.Opened end
     self.Opened = State
-    local Scale, MainStroke = self.UIScale, self.MainStroke
+    local Ghost = self:GetGhost()
+    Ghost.Token = Ghost.Token + 1
+    local Token = Ghost.Token
+    local G, T = Ghost.Frame, self.Theme
+    Ghost.Logo.Text = self.Title or ''
 
-    if Main.AnchorPoint ~= Vector2.new(0.5, 0.5) then
-        local C = Main.AbsolutePosition + Main.AbsoluteSize / 2
-        Main.AnchorPoint = Vector2.new(0.5, 0.5)
-        Main.Position = UDim2.fromOffset(C.X, C.Y)
-    end
-
-    local IslandPos
+    local P, S = Main.AbsolutePosition, Main.AbsoluteSize
+    local WinPos, WinSize = UDim2.fromOffset(P.X + S.X / 2, P.Y + S.Y / 2), UDim2.fromOffset(S.X, S.Y)
+    local IslandPos, IslandSize
     local Island = self.IslandApi
     if Island and Island.Visible and Island.Frame.Visible then
         local IP, IS = Island.Frame.AbsolutePosition, Island.Frame.AbsoluteSize
-        IslandPos = UDim2.fromOffset(IP.X + IS.X / 2, IP.Y + IS.Y / 2)
+        IslandPos, IslandSize = UDim2.fromOffset(IP.X + IS.X / 2, IP.Y + IS.Y / 2), UDim2.fromOffset(IS.X, IS.Y)
     end
+    local IslandBg = Color3.fromRGB(8, 8, 11)
 
     if State then
-        local Home = self.HomePosition or Main.Position
-        self.HomePosition = nil
-        Main.Visible = true
-        MainStroke.Transparency = 1
-        if IslandPos then
-            Main.Position = IslandPos
-            Scale.Scale = self.BaseScale * 0.08
-            Tween(Main, { Position = Home }, 0.55, Enum.EasingStyle.Quint)
-            Tween(Scale, { Scale = self.BaseScale }, 0.6, Back)
-        else
-            Scale.Scale = self.BaseScale * 0.9
-            Tween(Scale, { Scale = self.BaseScale }, 0.4, Back)
-        end
-        self.Fader:Fade(1, 0, 0.35)
-        Tween(MainStroke, { Transparency = 0 }, 0.35)
+        G.Visible = true
+        G.Position = IslandPos or WinPos
+        G.Size = IslandSize or UDim2.fromOffset(S.X * 0.92, S.Y * 0.92)
+        G.BackgroundColor3 = IslandPos and IslandBg or T.Background
+        G.BackgroundTransparency = IslandPos and 0 or 1
+        Ghost.Corner.CornerRadius = UDim.new(0, IslandPos and 16 or 12)
+        Ghost.Stroke.Transparency = IslandPos and 0.35 or 1
+        Ghost.Logo.TextTransparency = 1
+        Tween(G, { Position = WinPos, Size = WinSize, BackgroundColor3 = T.Background, BackgroundTransparency = 0 }, 0.45, Enum.EasingStyle.Quint)
+        Tween(Ghost.Corner, { CornerRadius = UDim.new(0, 12) }, 0.45, Enum.EasingStyle.Quint)
+        Tween(Ghost.Stroke, { Transparency = 0 }, 0.3)
+        Tween(Ghost.Logo, { TextTransparency = 0 }, 0.3)
+        task.delay(0.4, function()
+            if Token ~= Ghost.Token then return end
+            Main.Visible = true
+            Tween(G, { BackgroundTransparency = 1 }, 0.22)
+            Tween(Ghost.Stroke, { Transparency = 1 }, 0.22)
+            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.15)
+            task.delay(0.24, function()
+                if Token == Ghost.Token then G.Visible = false end
+            end)
+        end)
     else
         self:CloseDropdown()
         Tooltip.Visible = false
-        if not self.HomePosition then self.HomePosition = Main.Position end
-        Tween(MainStroke, { Transparency = 1 }, 0.25)
+        G.Visible = true
+        G.Position, G.Size = WinPos, WinSize
+        G.BackgroundColor3, G.BackgroundTransparency = T.Background, 0
+        Ghost.Corner.CornerRadius = UDim.new(0, 12)
+        Ghost.Stroke.Transparency = 0
+        Ghost.Logo.TextTransparency = 0
+        Main.Visible = false
         if IslandPos then
-            Tween(Main, { Position = IslandPos }, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-            Tween(Scale, { Scale = self.BaseScale * 0.08 }, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+            local Info = { Position = IslandPos, Size = IslandSize, BackgroundColor3 = IslandBg }
+            Tween(G, Info, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+            Tween(Ghost.Corner, { CornerRadius = UDim.new(0, 16) }, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.2)
+            task.delay(0.42, function()
+                if Token ~= Ghost.Token then return end
+                Tween(G, { BackgroundTransparency = 1 }, 0.12)
+                Tween(Ghost.Stroke, { Transparency = 1 }, 0.12)
+            end)
         else
-            Tween(Scale, { Scale = self.BaseScale * 0.9 }, 0.2, Enum.EasingStyle.Quad)
+            Tween(G, { Size = UDim2.fromOffset(S.X * 0.92, S.Y * 0.92), BackgroundTransparency = 1 }, 0.25)
+            Tween(Ghost.Stroke, { Transparency = 1 }, 0.25)
+            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.15)
         end
-        self.Fader:Fade(0, 1, IslandPos and 0.36 or 0.2, function()
-            if not self.Opened then Main.Visible = false end
+        task.delay(0.56, function()
+            if Token == Ghost.Token then G.Visible = false end
         end)
     end
     if Island then Island:OnToggle(State) end
@@ -3521,7 +3563,6 @@ function Library:CreateWindow(...)
     Themed(Main, { BackgroundColor3 = 'Background' }); Corner(Main, 12)
     local Scale = Create('UIScale', { Parent = Outer })
     Library.Main, Library.Body, Library.UIScale, Library.MainStroke = Outer, Main, Scale, MainStroke
-    Library.Fader = MakeFader(Outer, Main)
 
     local Camera = workspace.CurrentCamera
     local Viewport = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
@@ -3614,6 +3655,8 @@ function Library:CreateWindow(...)
     local Pages = Blank({ Position = UDim2.fromOffset(12, 70), Size = UDim2.new(1, -24, 1, -82), Parent = Content })
 
     local Window = { Tabs = {}, Main = Outer, Body = Main, Config = Config, LockLayout = Config.LockLayout, Sidebar = Sidebar, Nav = Nav }
+    Window.PageCover = Create('Frame', { BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 20, Parent = Pages })
+    Themed(Window.PageCover, { BackgroundColor3 = 'Background' })
     local NavOrder = 0
 
     function Window:SetWindowTitle(T) Logo.Text = T; Library.Title = T end
@@ -3909,7 +3952,6 @@ function Library:CreateWindow(...)
         Themed(Bar, { BackgroundColor3 = 'Accent' }); Corner(Bar, 'full')
 
         local Page = Blank({ Size = UDim2.fromScale(1, 1), Visible = false, Parent = Pages })
-        local PageFader = MakeFader(Pages, Page)
         local Left = MakeColumn(UDim2.fromScale(0, 0)); Left.Parent = Page
         local Right = MakeColumn(UDim2.new(0.5, 6, 0, 0)); Right.Parent = Page
         Tab.Page, Tab.Left, Tab.Right = Page, Left, Right
@@ -3931,7 +3973,14 @@ function Library:CreateWindow(...)
 
             Page.Visible = true
             Page.Position = UDim2.fromOffset(0, 18)
-            PageFader:Fade(1, 0, 0.35)
+            Window.PageCover.Visible = true
+            Window.PageCover.BackgroundTransparency = 0
+            Tween(Window.PageCover, { BackgroundTransparency = 1 }, 0.3)
+            local CoverToken = (Window.CoverToken or 0) + 1
+            Window.CoverToken = CoverToken
+            task.delay(0.31, function()
+                if Window.CoverToken == CoverToken then Window.PageCover.Visible = false end
+            end)
             Tween(Page, { Position = UDim2.fromOffset(0, 0) }, 0.35)
 
             Tween(Bar, { Size = UDim2.fromOffset(3, 16) }, 0.35, Back)

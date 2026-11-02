@@ -261,6 +261,8 @@ local function IsOver(Frame, Point)
     return Point.X >= P.X and Point.X <= P.X + S.X and Point.Y >= P.Y and Point.Y <= P.Y + S.Y
 end
 
+function Library:Create(Class, Props) return Create(Class, Props) end
+
 function Library:SafeCallback(F, ...)
     if type(F) ~= 'function' then return end
     local Ok, Err = pcall(F, ...)
@@ -311,6 +313,8 @@ local function MakeDraggable(Handle, Target)
 
     return State
 end
+
+function Library:MakeDraggable(Handle, Target) return MakeDraggable(Handle, Target or Handle) end
 
 local function GetPlayerNames()
     local Names = {}
@@ -1510,7 +1514,26 @@ function Funcs:AddButton(A, B)
     local Button = { Instance = Btn, Label = L }
     function Button:AddTooltip(Tip) Library:AddToolTip(Tip, Btn); return self end
     function Button:SetText(T) Info.Text = T; L.Text = T end
-    function Button:AddButton(...) return Box:AddButton(...) end
+    function Button:AddButton(...)
+        local Row, Siblings = Button.Row, Button.Siblings
+        if not Row then
+            Row = Blank({ Size = UDim2.new(1, 0, 0, 30), LayoutOrder = Btn.LayoutOrder, Parent = Btn.Parent })
+            ListLayout(Row, 8, Enum.FillDirection.Horizontal)
+            Btn.Parent = Row
+            Siblings = { Btn }
+            Button.Row, Button.Siblings = Row, Siblings
+        end
+        local Sub = Box:AddButton(...)
+        Sub.Instance.Parent = Row
+        Sub.Row, Sub.Siblings = Row, Siblings
+        table.insert(Siblings, Sub.Instance)
+        local N = #Siblings
+        for I, B in ipairs(Siblings) do
+            B.LayoutOrder = I
+            B.Size = UDim2.new(1 / N, -8 * (N - 1) / N, 0, 30)
+        end
+        return Sub
+    end
     EnableNesting(Button, Box, Btn, Info.Text, function(G)
         G.AnchorPoint = Vector2.new(1, 0.5)
         G.Position = UDim2.new(1, -5, 0.5, 0)
@@ -1570,7 +1593,9 @@ function Funcs:AddInput(Idx, Info)
     Box.FocusLost:Connect(function(Enter)
         Tween(BgStroke, { Color = Library.Theme.Stroke })
         Tween(Bg, { BackgroundColor3 = Library.Theme.Element })
-        if Input.Finished then Input:SetValue(Box.Text) end
+        if Input.Finished then
+            if Enter then Input:SetValue(Box.Text) else Box.Text = Input.Value end
+        end
         Library:AttemptSave()
     end)
 
@@ -1793,7 +1818,7 @@ function Funcs:AddPriorityList(Idx, Info)
     local ShowArrows = UserInputService.TouchEnabled
     local PL = {
         Type = 'PriorityList', Value = {}, Values = {}, Enabled = {}, Memory = {},
-        Callback = Info.Callback, NoConfig = Info.NoConfig,
+        Callback = Info.Callback, NoConfig = Info.NoConfig, Listeners = {},
     }
     local Groupbox = self.Groupbox
     local Rows = {}
@@ -1876,6 +1901,7 @@ function Funcs:AddPriorityList(Idx, Info)
         Remember()
         Library:SafeCallback(PL.Callback, PL.Value, PL.Enabled)
         Library:SafeCallback(PL.Changed, PL.Value, PL.Enabled)
+        for _, F in ipairs(PL.Listeners) do Library:SafeCallback(F, PL.Value) end
     end
 
     local function Bump(Row)
@@ -1962,6 +1988,30 @@ function Funcs:AddPriorityList(Idx, Info)
         MiniButton(-32, true)
         MiniButton(-6, false)
 
+        local RemoveBtn = Create('TextButton', {
+            AutoButtonColor = false, Text = '', BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -58, 0.5, 0), Size = UDim2.fromOffset(24, 24), ZIndex = 3,
+            Visible = PL.Pool ~= nil, Parent = F,
+        })
+        Themed(RemoveBtn, { BackgroundColor3 = 'Card' }); Corner(RemoveBtn, 6)
+        local X1 = IconBar(RemoveBtn, 10, 2, 0, 0, 45, nil, 'SubText')
+        local X2 = IconBar(RemoveBtn, 10, 2, 0, 0, -45, nil, 'SubText')
+        X1.BackgroundTransparency, X2.BackgroundTransparency = ShowArrows and 0 or 1, ShowArrows and 0 or 1
+        table.insert(ArrowBars, X1); table.insert(ArrowBars, X2)
+        RemoveBtn.MouseEnter:Connect(function()
+            Tween(RemoveBtn, { BackgroundTransparency = 0 }, 0.12)
+            Tween(X1, { BackgroundColor3 = Library.Theme.Risk, Rotation = 135 }, 0.25)
+            Tween(X2, { BackgroundColor3 = Library.Theme.Risk, Rotation = 45 }, 0.25)
+        end)
+        RemoveBtn.MouseLeave:Connect(function()
+            Tween(RemoveBtn, { BackgroundTransparency = 1 }, 0.12)
+            Tween(X1, { BackgroundColor3 = Library.Theme.SubText, Rotation = 45 }, 0.25)
+            Tween(X2, { BackgroundColor3 = Library.Theme.SubText, Rotation = -45 }, 0.25)
+        end)
+        RemoveBtn.MouseButton1Click:Connect(function() PL:Remove(V) end)
+        Row.RemoveBtn = RemoveBtn
+        if PL.Pool then Label.Size = UDim2.new(1, -56 - 84, 1, 0) end
+
         local function SetHover(On)
             Row.Hover = On
             if not ShowArrows then
@@ -1994,7 +2044,16 @@ function Funcs:AddPriorityList(Idx, Info)
         if Groupbox and Groupbox.Column then Groupbox.Column.ScrollingEnabled = false end
     end
 
+    local function OverPool(Pt)
+        local Area = PL.Pool and PL.Pool.Area
+        if not Area then return false end
+        local P, Sz = Area.AbsolutePosition, Area.AbsoluteSize
+        return Pt.X >= P.X and Pt.X <= P.X + Sz.X and Pt.Y >= P.Y and Pt.Y <= P.Y + Sz.Y
+    end
+
     local function MoveDrag(Pt)
+        Drag.LastPt = Pt
+        if PL.Pool then PL.Pool:SetDropHighlight(OverPool(Pt)) end
         local S = Library.UIScale and Library.UIScale.Scale or 1
         local Y = math.clamp((Pt.Y - ListFrame.AbsolutePosition.Y) / S - Drag.Grab, 0, math.max(#PL.Value - 1, 0) * STEP)
         Drag.Row.Frame.Position = UDim2.fromOffset(0, Y)
@@ -2011,6 +2070,16 @@ function Funcs:AddPriorityList(Idx, Info)
         local D = Drag
         Drag = nil
         local Row = D.Row
+        if PL.Pool then
+            PL.Pool:SetDropHighlight(false)
+            if D.LastPt and OverPool(D.LastPt) then
+                if Groupbox and Groupbox.Column then Groupbox.Column.ScrollingEnabled = true end
+                Row.Frame.ZIndex = 1
+                PL:Remove(Row.Value)
+                Library:AttemptSave()
+                return
+            end
+        end
         local I = table.find(PL.Value, Row.Value) or 1
         Tween(Row.Frame, { Position = SlotPos(I) }, 0.25)
         Tween(Row.Scale, { Scale = 1 }, 0.35, Back)
@@ -2083,6 +2152,62 @@ function Funcs:AddPriorityList(Idx, Info)
         Fire()
     end
     PL.Refresh = PL.SetValues
+    PL.ListFrame = ListFrame
+
+    -- add an item at a position (used by a linked pool)
+    function PL:Insert(V, Index)
+        if table.find(self.Value, V) then return end
+        Index = math.clamp(Index or (#self.Value + 1), 1, #self.Value + 1)
+        local Order = {}
+        for _, X in ipairs(self.Value) do table.insert(Order, X) end
+        table.insert(Order, Index, V)
+        for _, X in ipairs(self.Memory) do
+            if not table.find(Order, X) then table.insert(Order, X) end
+        end
+        self.Memory = Order
+        local NewValues = {}
+        for _, X in ipairs(self.Values) do table.insert(NewValues, X) end
+        table.insert(NewValues, V)
+        self:SetValues(NewValues)
+        Library:AttemptSave()
+    end
+
+    function PL:Remove(V)
+        local NewValues = {}
+        for _, X in ipairs(self.Values) do
+            if X ~= V then table.insert(NewValues, X) end
+        end
+        self:SetValues(NewValues)
+        Library:AttemptSave()
+    end
+
+    function PL:IndexAt(Pt)
+        local S = Library.UIScale and Library.UIScale.Scale or 1
+        local Y = (Pt.Y - ListFrame.AbsolutePosition.Y) / S
+        return math.clamp(math.floor(Y / STEP + 0.5) + 1, 1, #self.Value + 1)
+    end
+
+    local Marker = Create('Frame', {
+        BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 3), BackgroundTransparency = 1, ZIndex = 6, Parent = ListFrame,
+    })
+    Themed(Marker, { BackgroundColor3 = 'Accent' }); Corner(Marker, 'full')
+    function PL:ShowDropMarker(Index)
+        if not Index then
+            Tween(Marker, { BackgroundTransparency = 1 }, 0.12)
+            return
+        end
+        local Y = #self.Value == 0 and (ROW / 2 - 1) or ((Index - 1) * STEP - GAP / 2 - 1)
+        Tween(Marker, { Position = UDim2.fromOffset(0, Y), BackgroundTransparency = 0 }, 0.1)
+    end
+
+    function PL:LinkPool(Pool)
+        self.Pool = Pool
+        Empty.Text = Info.EmptyText or 'Drag items here'
+        for _, Row in pairs(Rows) do
+            if Row.RemoveBtn then Row.RemoveBtn.Visible = true end
+            Row.Label.Size = UDim2.new(1, -56 - 84, 1, 0)
+        end
+    end
 
     function PL:SetValue(Data)
         if type(Data) ~= 'table' then return end
@@ -2094,7 +2219,13 @@ function Funcs:AddPriorityList(Idx, Info)
             self.Enabled = {}
             for _, V in ipairs(Disabled) do self.Enabled[V] = false end
         end
-        self:SetValues(self.Values)
+        if self.Pool then
+            local Selected = {}
+            for _, V in ipairs(Order) do table.insert(Selected, V) end
+            self:SetValues(Selected)
+        else
+            self:SetValues(self.Values)
+        end
     end
 
     function PL:SetEnabled(V, On)
@@ -2128,7 +2259,7 @@ function Funcs:AddPriorityList(Idx, Info)
             if On == false then table.insert(Disabled, V) end
         end
         Remember()
-        return { Order = self.Memory, Disabled = Disabled }
+        return { Order = self.Pool and self.Value or self.Memory, Disabled = Disabled }
     end
 
     function PL:OnChanged(F)
@@ -2169,6 +2300,208 @@ function Funcs:AddPriorityList(Idx, Info)
     return PL
 end
 Funcs.AddPriority = Funcs.AddPriorityList
+
+-- Pool of items that are not in a PriorityList yet. Drag a chip into the list (or click it)
+-- to add it; drag a row from the list onto the pool (or press x) to take it out.
+function Funcs:AddPriorityPool(Idx, Info)
+    Info = Info or {}
+    local Target = Info.Target
+    assert(Target and Target.Type == 'PriorityList', 'AddPriorityPool: Target must be a PriorityList')
+    local Pool = { Type = 'PriorityPool', Values = {}, Value = {}, NoConfig = true }
+    local Groupbox = self.Groupbox
+    local Press, Drag
+
+    local Holder = Blank({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+    ListLayout(Holder, 6)
+    if Info.Text then
+        Text({ Text = Info.Text, ColorKey = 'SubText', Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 1, Parent = Holder })
+    end
+
+    local SearchBox
+    if Info.Searchable ~= false then
+        local Bg = Create('Frame', { BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 2, Parent = Holder })
+        Themed(Bg, { BackgroundColor3 = 'Element' }); Corner(Bg, 6)
+        local BgStroke = Stroke(Bg)
+        local In = SmoothInput(Bg, { Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), TextSize = 12, Placeholder = 'Search...' })
+        SearchBox = In.Box
+        SearchBox.Focused:Connect(function() Tween(BgStroke, { Color = Library.Theme.Accent }) end)
+        SearchBox.FocusLost:Connect(function() Tween(BgStroke, { Color = Library.Theme.Stroke }) end)
+    end
+
+    local Area = Create('Frame', {
+        BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = Holder,
+    })
+    Themed(Area, { BackgroundColor3 = 'Background' }); Corner(Area, 8)
+    local AreaStroke = Stroke(Area)
+    Padding(Area, 8, 8, 8, 8)
+    local Chips = Blank({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = Area })
+    local ChipLayout = ListLayout(Chips, 6, Enum.FillDirection.Horizontal)
+    pcall(function() ChipLayout.Wraps = true end)
+    local Empty = Text({
+        Text = Info.EmptyText or 'Everything is in the list', ColorKey = 'DimText', TextSize = 12, RichText = false,
+        TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 24), Visible = false, Parent = Area,
+    })
+    Pool.Area = Area
+
+    local Highlighted = false
+    function Pool:SetDropHighlight(On)
+        if On == Highlighted then return end
+        Highlighted = On
+        Tween(AreaStroke, { Color = On and Library.Theme.Risk or Library.Theme.Stroke }, 0.15)
+        Tween(Area, { BackgroundColor3 = On and Library.Theme.Background:Lerp(Library.Theme.Risk, 0.08) or Library.Theme.Background }, 0.15)
+    end
+
+    local function IsOver(Frame, Pt)
+        local P, S = Frame.AbsolutePosition, Frame.AbsoluteSize
+        return Pt.X >= P.X and Pt.X <= P.X + S.X and Pt.Y >= P.Y and Pt.Y <= P.Y + S.Y
+    end
+
+    local Order = 0
+    local function MakeChip(V, Animate)
+        Order = Order + 1
+        local Chip = Create('TextButton', {
+            AutoButtonColor = false, Text = tostring(V), Font = Library.Font, TextSize = 12,
+            Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = Order, Parent = Chips,
+        })
+        Themed(Chip, { BackgroundColor3 = 'Element', TextColor3 = 'SubText' })
+        Corner(Chip, 6); Padding(Chip, 0, 0, 10, 10)
+        local ChipStroke = Stroke(Chip)
+        local ChipScale = Create('UIScale', { Parent = Chip })
+        if Animate then
+            ChipScale.Scale = 0.5
+            Tween(ChipScale, { Scale = 1 }, 0.35, Back)
+        end
+        Chip.MouseEnter:Connect(function()
+            if Drag then return end
+            Tween(ChipStroke, { Color = Library.Theme.Accent }, 0.15)
+            Tween(Chip, { TextColor3 = Library.Theme.Text }, 0.15)
+        end)
+        Chip.MouseLeave:Connect(function()
+            Tween(ChipStroke, { Color = Library.Theme.Stroke }, 0.15)
+            Tween(Chip, { TextColor3 = Library.Theme.SubText }, 0.15)
+        end)
+        Chip.InputBegan:Connect(function(Input)
+            if IsClick(Input) and not Drag then Press = { V = V, Chip = Chip, Pt = PointerOf(Input) } end
+        end)
+        Chip.MouseButton1Click:Connect(function()
+            if Drag or Pool.JustDragged then return end
+            Target:Insert(V)
+        end)
+        return Chip
+    end
+
+    function Pool:Build()
+        for _, C in ipairs(Chips:GetChildren()) do
+            if C:IsA('TextButton') then C:Destroy() end
+        end
+        local Query = SearchBox and string.lower(SearchBox.Text) or ''
+        self.Value = {}
+        local Shown = 0
+        for _, V in ipairs(self.Values) do
+            if not table.find(Target.Value, V) then
+                table.insert(self.Value, V)
+                if Query == '' or string.find(string.lower(tostring(V)), Query, 1, true) then
+                    MakeChip(V, false)
+                    Shown = Shown + 1
+                end
+            end
+        end
+        Empty.Visible = Shown == 0
+        Empty.Text = (#self.Value > 0 and Query ~= '') and 'No results' or (Info.EmptyText or 'Everything is in the list')
+    end
+
+    function Pool:SetValues(Values)
+        self.Values = {}
+        for _, V in ipairs(Values or {}) do
+            if not table.find(self.Values, V) then table.insert(self.Values, V) end
+        end
+        self:Build()
+    end
+    Pool.Refresh = Pool.SetValues
+
+    -- dragging a chip into the list
+    local function StartDrag(P, Pt)
+        Library:CloseDropdown()
+        local Scale = Library.UIScale and Library.UIScale.Scale or 1
+        local Ghost = Create('TextLabel', {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(Pt.X, Pt.Y), Size = UDim2.fromOffset(0, 28),
+            AutomaticSize = Enum.AutomaticSize.X, Text = tostring(P.V), Font = Library.FontMedium, TextSize = 12,
+            ZIndex = 120, Parent = Overlay,
+        })
+        Themed(Ghost, { BackgroundColor3 = 'Card', TextColor3 = 'Text' })
+        Corner(Ghost, 6); Padding(Ghost, 0, 0, 12, 12)
+        Stroke(Ghost, 'Accent', 1.5)
+        local GhostScale = Create('UIScale', { Scale = Scale * 0.8, Parent = Ghost })
+        Tween(GhostScale, { Scale = Scale * 1.08 }, 0.3, Back)
+        Tween(P.Chip, { TextTransparency = 0.7, BackgroundTransparency = 0.6 }, 0.15)
+        Drag = { V = P.V, Chip = P.Chip, Ghost = Ghost, GhostScale = GhostScale }
+        if Groupbox and Groupbox.Column then Groupbox.Column.ScrollingEnabled = false end
+    end
+
+    local function MoveDrag(Pt)
+        Drag.LastPt = Pt
+        Tween(Drag.Ghost, { Position = UDim2.fromOffset(Pt.X, Pt.Y) }, 0.05, Enum.EasingStyle.Linear)
+        if IsOver(Target.ListFrame, Pt) or (Target.ListFrame.AbsoluteSize.Y < 40 and IsOver(Target.ListFrame.Parent, Pt)) then
+            Drag.Index = Target:IndexAt(Pt)
+            Target:ShowDropMarker(Drag.Index)
+        else
+            Drag.Index = nil
+            Target:ShowDropMarker(nil)
+        end
+    end
+
+    local function EndDrag()
+        local D = Drag
+        Drag = nil
+        Target:ShowDropMarker(nil)
+        if Groupbox and Groupbox.Column then Groupbox.Column.ScrollingEnabled = true end
+        Pool.JustDragged = true
+        task.defer(function() Pool.JustDragged = false end)
+        if D.Index then
+            Tween(D.GhostScale, { Scale = 0.2 }, 0.18)
+            Tween(D.Ghost, { TextTransparency = 1, BackgroundTransparency = 1 }, 0.18)
+            task.delay(0.2, function() D.Ghost:Destroy() end)
+            Target:Insert(D.V, D.Index)
+        else
+            Tween(D.GhostScale, { Scale = 0.6 }, 0.2)
+            Tween(D.Ghost, { TextTransparency = 1, BackgroundTransparency = 1 }, 0.2)
+            task.delay(0.22, function() D.Ghost:Destroy() end)
+            if D.Chip.Parent then Tween(D.Chip, { TextTransparency = 0, BackgroundTransparency = 0 }, 0.2) end
+        end
+    end
+
+    Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input)
+        if not (Input.UserInputType == Move or Input.UserInputType == Touch) then return end
+        if Drag then
+            MoveDrag(PointerOf(Input))
+        elseif Press then
+            local Pt = PointerOf(Input)
+            if (Pt - Press.Pt).Magnitude > 5 then
+                local P = Press
+                Press = nil
+                StartDrag(P, Pt)
+                MoveDrag(Pt)
+            end
+        end
+    end))
+    Library:GiveSignal(UserInputService.InputEnded:Connect(function(Input)
+        if not IsClick(Input) then return end
+        Press = nil
+        if Drag then EndDrag() end
+    end))
+
+    if SearchBox then
+        SearchBox:GetPropertyChangedSignal('Text'):Connect(function() Pool:Build() end)
+    end
+    table.insert(Target.Listeners, function() Pool:Build() end)
+    Target:LinkPool(Pool)
+
+    Pool:SetValues(Info.Values or {})
+    if Info.Tooltip then Library:AddToolTip(Info.Tooltip, Area) end
+    AddElement(self, Holder, Info.Text or Idx)
+    Options[Idx] = Pool
+    return Pool
+end
 
 function Funcs:AddParagraph(Idx, Info)
     Info = Info or {}
@@ -3040,7 +3373,8 @@ function Funcs:AddDropdown(Idx, Info)
     end
     if Dropdown.Multi then
         local Defaults = type(Info.Default) == 'table' and Info.Default or { Info.Default }
-        for _, D in ipairs(Defaults) do
+        for K, D in pairs(Defaults) do
+            if D == true and type(K) ~= 'number' then D = K end
             D = Resolve(D)
             if D ~= nil and table.find(Dropdown.Values, D) then Dropdown.Value[D] = true end
         end
@@ -4047,6 +4381,7 @@ function Library:GetConfigData()
     local Data = { Toggles = {}, Options = {} }
     if self.Window then Data.Layout = self.Window:GetLayout() end
     Data.Theme = { Preset = self.ThemePresetName, Accent = self.Theme.Accent:ToHex() }
+    Data.Menu = { Key = KeyName(self.ToggleKeybind) }
     for Idx, T in pairs(Toggles) do
         if not T.NoConfig then Data.Toggles[Idx] = T.Value end
     end
@@ -4069,6 +4404,9 @@ function Library:GetConfigData()
 end
 
 function Library:ApplyConfigData(Data)
+    if type(Data.Menu) == 'table' and type(Data.Menu.Key) == 'string' and Options.__MenuKeybind then
+        Options.__MenuKeybind:SetValue(Data.Menu.Key)
+    end
     if type(Data.Theme) == 'table' then
         if Data.Theme.Preset then
             if Options.__ThemePreset then Options.__ThemePreset:SetValue(Data.Theme.Preset) else self:SetThemePreset(Data.Theme.Preset) end
@@ -4188,6 +4526,7 @@ end
 function Library:ExportConfigCode()
     local Data = self:GetConfigData()
     Data.Layout = nil
+    Data.Menu = nil
     return CODE_PREFIX .. Base64Encode(HttpService:JSONEncode(Data))
 end
 

@@ -2154,7 +2154,6 @@ function Funcs:AddPriorityList(Idx, Info)
     PL.Refresh = PL.SetValues
     PL.ListFrame = ListFrame
 
-    -- add an item at a position (used by a linked pool)
     function PL:Insert(V, Index)
         if table.find(self.Value, V) then return end
         Index = math.clamp(Index or (#self.Value + 1), 1, #self.Value + 1)
@@ -2301,8 +2300,6 @@ function Funcs:AddPriorityList(Idx, Info)
 end
 Funcs.AddPriority = Funcs.AddPriorityList
 
--- Pool of items that are not in a PriorityList yet. Drag a chip into the list (or click it)
--- to add it; drag a row from the list onto the pool (or press x) to take it out.
 function Funcs:AddPriorityPool(Idx, Info)
     Info = Info or {}
     local Target = Info.Target
@@ -2419,7 +2416,6 @@ function Funcs:AddPriorityPool(Idx, Info)
     end
     Pool.Refresh = Pool.SetValues
 
-    -- dragging a chip into the list
     local function StartDrag(P, Pt)
         Library:CloseDropdown()
         local Scale = Library.UIScale and Library.UIScale.Scale or 1
@@ -3443,8 +3439,6 @@ function Library:CloseDropdown()
     self:UpdateCatchers()
 end
 
--- Open / close animation. The real window only shows or hides; a light "ghost" card
--- (a few instances) does the morph to / from the island, so big UIs don't drop FPS.
 function Library:GetGhost()
     if self.Ghost then return self.Ghost end
     local Frame = Create('Frame', {
@@ -3501,6 +3495,8 @@ function Library:Toggle(State)
             if Token ~= Ghost.Token then return end
             if self.Body then self.Body.Parent = Main end
             Main.Visible = true
+            local W = Library.Window
+            if W and W.ActiveTab and W.ActiveTab.QueueBalance then W.ActiveTab:QueueBalance() end
             Tween(G, { BackgroundTransparency = 1 }, 0.22)
             Tween(Ghost.Stroke, { Transparency = 1 }, 0.22)
             Tween(Ghost.Logo, { TextTransparency = 1 }, 0.15)
@@ -3566,9 +3562,6 @@ function Library:CreateWindow(...)
     local Scale = Create('UIScale', { Parent = Outer })
     Library.Main, Library.Body, Library.UIScale, Library.MainStroke = Outer, Main, Scale, MainStroke
 
-    -- Auto size: shrink the whole UI to fit the screen (phones, small windows),
-    -- re-fit when the screen changes (rotation / resize). The Settings "UI scale"
-    -- slider multiplies on top of this.
     Library.ScalePercent = Library.ScalePercent or 1
     local function ScreenSize()
         local Screen = ScreenGui.AbsoluteSize
@@ -3887,7 +3880,7 @@ function Library:CreateWindow(...)
         local L = { Tabs = {}, Size = { Outer.Size.X.Offset, Outer.Size.Y.Offset },
             Profile = { Hide = Profile.Hide, Protect = Profile.Protect } }
         for _, Tab in ipairs(self.Tabs) do
-            local T = { Left = {}, Right = {} }
+            local T = { Left = {}, Right = {}, Custom = Tab.Custom or nil }
             for _, Side in ipairs({ 'Left', 'Right' }) do
                 for _, G in ipairs(Tab.Cols[Side]) do table.insert(T[Side], G.Key) end
             end
@@ -3904,7 +3897,8 @@ function Library:CreateWindow(...)
         end
         for _, Tab in ipairs(self.Tabs) do
             local T = type(L.Tabs) == 'table' and L.Tabs[Tab.Name]
-            if type(T) == 'table' then
+            if type(T) == 'table' and T.Custom then
+                Tab.Custom = true
                 local Pool, Placed, New = {}, {}, { Left = {}, Right = {} }
                 for _, Side in ipairs({ 'Left', 'Right' }) do
                     for _, G in ipairs(Tab.Cols[Side]) do Pool[G.Key] = G end
@@ -3956,8 +3950,10 @@ function Library:CreateWindow(...)
             local New = { Left = {}, Right = {} }
             for _, G in ipairs(Tab.Groupboxes) do table.insert(New[G.DefaultSide], G) end
             Tab.Cols.Left, Tab.Cols.Right = New.Left, New.Right
+            Tab.Custom, Tab.Balanced = false, false
             Tab:Relayout()
         end
+        if self.ActiveTab then self.ActiveTab:QueueBalance() end
         if self.SetSize then self:SetSize(Config.Size.X.Offset, Config.Size.Y.Offset) end
         self:SaveLayout()
     end
@@ -4027,33 +4023,36 @@ function Library:CreateWindow(...)
 
             Tween(Bar, { Size = UDim2.fromOffset(3, 16) }, 0.35, Back)
             Tween(Label, { Position = UDim2.fromOffset(Indent + 6, 0) }, 0.25)
-            Tween(Btn, { BackgroundTransparency = 0.35 }, 0.25)
+            Tween(Btn, { BackgroundTransparency = Tab.Plated and 1 or 0.35 }, 0.25)
             SetLabel('Text')
+            Tab:QueueBalance()
+            if Tab.StyleShow then Tab.StyleShow() end
             if Tab.OnShow then Tab.OnShow() end
         end
 
         function Tab:HideTab()
             Page.Visible = false
-            Page.Parent = nil -- hidden tabs are detached so their text/layout updates cost nothing
+            Page.Parent = nil
             Tween(Bar, { Size = UDim2.fromOffset(3, 0) }, 0.2)
             Tween(Label, { Position = UDim2.fromOffset(Indent, 0) }, 0.25)
             Tween(Btn, { BackgroundTransparency = 1 }, 0.25)
-            SetLabel('DimText')
+            SetLabel(Tab.Plated and 'SubText' or 'DimText')
+            if Tab.StyleHide then Tab.StyleHide() end
             if Tab.OnHide then Tab.OnHide() end
         end
 
         Btn.MouseEnter:Connect(function()
             if Window.ActiveTab ~= Tab then
-                SetLabel('SubText')
+                SetLabel(Tab.Plated and 'Text' or 'SubText')
                 Tween(Label, { Position = UDim2.fromOffset(Indent + 3, 0) }, 0.2)
-                Tween(Btn, { BackgroundTransparency = 0.7 }, 0.2)
+                if Tab.StyleHover then Tab.StyleHover(true) else Tween(Btn, { BackgroundTransparency = 0.7 }, 0.2) end
             end
         end)
         Btn.MouseLeave:Connect(function()
             if Window.ActiveTab ~= Tab then
-                SetLabel('DimText')
+                SetLabel(Tab.Plated and 'SubText' or 'DimText')
                 Tween(Label, { Position = UDim2.fromOffset(Indent, 0) }, 0.2)
-                Tween(Btn, { BackgroundTransparency = 1 }, 0.2)
+                if Tab.StyleHover then Tab.StyleHover(false) else Tween(Btn, { BackgroundTransparency = 1 }, 0.2) end
             end
         end)
         Btn.MouseButton1Click:Connect(function() Tab:ShowTab() end)
@@ -4071,6 +4070,52 @@ function Library:CreateWindow(...)
                     G.Column, G.Side = ColFrames[Side], Side
                 end
             end
+        end
+
+        function Tab:Balance()
+            if self.Custom or Window.AutoBalance == false or Config.AutoBalance == false then return true end
+            local H, Total = {}, 0
+            for _, Side in ipairs({ 'Left', 'Right' }) do
+                for _, G in ipairs(Cols[Side]) do
+                    H[G] = G.Card.AbsoluteSize.Y
+                    Total = Total + H[G]
+                end
+            end
+            if Total <= 0 then return false end
+            local function Height(Side)
+                local Sum = 0
+                for _, G in ipairs(Cols[Side]) do Sum = Sum + H[G] + 12 end
+                return Sum
+            end
+            local MovedInto, Moved = { Left = 0, Right = 0 }, false
+            for _ = 1, #self.Groupboxes do
+                local L, R = Height('Left'), Height('Right')
+                local From, To = 'Left', 'Right'
+                if R > L then From, To = 'Right', 'Left' end
+                local List = Cols[From]
+                local G = List[#List]
+                if not G or G.Pinned then break end
+                local Diff = math.abs(L - R)
+                if math.abs(Diff - 2 * (H[G] + 12)) >= Diff - 1 then break end
+                table.remove(List)
+                table.insert(Cols[To], math.max(1, #Cols[To] - MovedInto[To] + 1), G)
+                MovedInto[To] = MovedInto[To] + 1
+                Moved = true
+            end
+            if Moved then self:Relayout() end
+            return true
+        end
+
+        function Tab:QueueBalance()
+            if self.Balanced or self.Custom or self.BalanceQueued then return end
+            self.BalanceQueued = true
+            task.spawn(function()
+                RunService.RenderStepped:Wait()
+                RunService.RenderStepped:Wait()
+                self.BalanceQueued = false
+                if Window.ActiveTab ~= self or not Page.Parent or self.Balanced then return end
+                if self:Balance() then self.Balanced = true end
+            end)
         end
 
         local DragLayer = Blank({ Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = Page })
@@ -4158,6 +4203,7 @@ function Library:CreateWindow(...)
                 Tab:Relayout()
                 Left.ScrollingEnabled, Right.ScrollingEnabled = true, true
                 Dropping = false
+                Tab.Custom = true
                 Window:SaveLayout()
             end)
         end
@@ -4253,7 +4299,7 @@ function Library:CreateWindow(...)
 
             local Groupbox = setmetatable({
                 Name = Info.Name, Key = Key, Card = Card, CardStroke = CardStroke, CardScale = CardScale,
-                Container = Container, Column = Column, Side = Side, DefaultSide = Side,
+                Container = Container, Column = Column, Side = Side, DefaultSide = Side, Pinned = Info.Pinned,
                 Elements = {}, Order = 0, Tab = Tab,
             }, { __index = Funcs })
             Groupbox.Groupbox = Groupbox
@@ -4343,7 +4389,45 @@ function Library:CreateWindow(...)
         return Category
     end
 
-    function Window:AddTab(Name) return Window:_AddTab(Name, Nav, 14) end
+    function Window:AddTab(Name, Icon)
+        local Plate = Create('Frame', { BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = NavOrder + 1, Parent = Nav })
+        Themed(Plate, { BackgroundColor3 = 'Card' }); Corner(Plate, 8)
+        local PlateStroke = Stroke(Plate)
+        local Tab = Window:_AddTab(Name, Plate, 34)
+        local Btn, Label = Tab.Button, Tab.Label
+        Tab.Plated = true
+        Btn.Size = UDim2.fromScale(1, 1)
+        Corner(Btn, 8)
+        Label.Font = Library.FontBold
+        Library.Registry[Label].TextColor3 = Window.ActiveTab == Tab and 'Text' or 'SubText'
+        Label.TextColor3 = Library.Theme[Library.Registry[Label].TextColor3]
+        if Icon then
+            local Img = Create('ImageLabel', {
+                BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0),
+                Size = UDim2.fromOffset(14, 14), Image = Icon, ZIndex = 2, Parent = Btn,
+            })
+            Themed(Img, { ImageColor3 = 'Accent' })
+        else
+            local Ring = Blank({ AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), Size = UDim2.fromOffset(11, 11), ZIndex = 2, Parent = Btn })
+            Corner(Ring, 'full'); Stroke(Ring, 'Accent', 1.5)
+            local Dot = Create('Frame', { BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(3, 3), Parent = Ring })
+            Themed(Dot, { BackgroundColor3 = 'Accent' }); Corner(Dot, 'full')
+        end
+        function Tab.StyleHover(On)
+            Tween(Plate, { BackgroundColor3 = On and Library.Theme.Hover or Library.Theme.Card }, 0.2)
+            Tween(PlateStroke, { Color = On and Lerp('Stroke', 'Accent', 0.4) or Library.Theme.Stroke }, 0.2)
+        end
+        function Tab.StyleShow()
+            Tween(Plate, { BackgroundColor3 = Library.Theme.Hover }, 0.25)
+            Tween(PlateStroke, { Color = Library.Theme.Accent }, 0.25)
+        end
+        function Tab.StyleHide()
+            Tween(Plate, { BackgroundColor3 = Library.Theme.Card }, 0.25)
+            Tween(PlateStroke, { Color = Library.Theme.Stroke }, 0.25)
+        end
+        if Window.ActiveTab == Tab then Btn.BackgroundTransparency = 1; Tab.StyleShow() end
+        return Tab
+    end
 
     local MinSize = typeof(Config.MinSize) == 'Vector2' and Config.MinSize or Vector2.new(680, 420)
     local Grip = Create('TextButton', {

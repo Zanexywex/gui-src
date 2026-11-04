@@ -470,7 +470,45 @@ local NotifyHolder = Blank({
 local NotifyLayout = ListLayout(NotifyHolder, 8)
 NotifyLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 
-function Library:Notify(Message, Time)
+function Library:Confirm(Message, Callback)
+    local Prompt = Create('TextButton', {
+        Name = 'Confirmation', Text = '', AutoButtonColor = false, Active = true, Modal = true,
+        BackgroundColor3 = Color3.new(), BackgroundTransparency = 0.35,
+        Size = UDim2.fromScale(1, 1), ZIndex = 100, Parent = OverlayGui,
+    })
+    local Card = Create('Frame', {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 101, Parent = Prompt,
+    })
+    Create('UISizeConstraint', { MaxSize = Vector2.new(340, 10000), Parent = Card })
+    Themed(Card, { BackgroundColor3 = 'Card' }); Corner(Card, 8); Stroke(Card)
+    Padding(Card, 16, 16, 16, 16); ListLayout(Card, 10)
+    Text({ Text = 'Confirm', Font = self.FontBold, ColorKey = 'Accent',
+        Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 1, ZIndex = 102, Parent = Card })
+    Text({ Text = tostring(Message), RichText = false, TextWrapped = true, AutomaticSize = Enum.AutomaticSize.Y,
+        Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 2, ZIndex = 102, Parent = Card })
+    local Actions = Blank({ Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, ZIndex = 102, Parent = Card })
+    ListLayout(Actions, 8, Enum.FillDirection.Horizontal)
+    local Resolved = false
+    for I, Choice in ipairs({ 'Yes', 'No' }) do
+        local Action = Create('TextButton', {
+            AutoButtonColor = false, Text = Choice, Font = self.FontMedium, TextSize = 13,
+            Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = I, ZIndex = 103, Parent = Actions,
+        })
+        Themed(Action, { BackgroundColor3 = I == 1 and 'Accent' or 'Element', TextColor3 = 'Text' })
+        Corner(Action, 6)
+        Action.Activated:Connect(function()
+            if Resolved or not Prompt.Parent then return end
+            Resolved = true
+            Prompt:Destroy()
+            self:SafeCallback(Callback, Choice == 'Yes')
+        end)
+    end
+    return Prompt
+end
+
+function Library:Notify(Message, Time, OnConfirm)
+    if OnConfirm then return self:Confirm(Message, OnConfirm) end
     Time = Time or 5
     if self.IslandApi and self.IslandApi.Visible and self.IslandNotifications ~= false then
         return self.IslandApi:Notify(Message, Time)
@@ -487,12 +525,12 @@ function Library:Notify(Message, Time)
         Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 1, Parent = Card })
     Text({ Text = tostring(Message), TextWrapped = true, AutomaticSize = Enum.AutomaticSize.Y,
         Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 2, Parent = Card })
+    Tween(Card, { Position = UDim2.new(0, 0, 0, 0) }, 0.25)
     local BarBg = Create('Frame', { BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 3, Parent = Card })
     Themed(BarBg, { BackgroundColor3 = 'Element' })
     local Bar = Create('Frame', { BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = BarBg })
     Themed(Bar, { BackgroundColor3 = 'Accent' })
 
-    Tween(Card, { Position = UDim2.new(0, 0, 0, 0) }, 0.25)
     Tween(Bar, { Size = UDim2.fromScale(0, 1) }, Time)
     task.delay(Time, function()
         Tween(Card, { Position = UDim2.new(1, 20, 0, 0) }, 0.25)
@@ -1485,8 +1523,15 @@ function Funcs:AddButton(A, B)
     end)
     Btn.MouseButton1Up:Connect(function() Tween(BtnScale, { Scale = 1 }, 0.25, Back) end)
 
-    local Pending = false
+    local Pending, Confirmation = false, nil
     Btn.MouseButton1Click:Connect(function()
+        if Info.Confirm then
+            if Confirmation and Confirmation.Parent then return end
+            Confirmation = Library:Confirm(type(Info.Confirm) == 'string' and Info.Confirm or ('Run "' .. (Info.Text or 'Button') .. '"?'), function(Confirmed)
+                if Confirmed then Library:SafeCallback(Func) end
+            end)
+            return
+        end
         if Info.DoubleClick then
             if not Pending then
                 Pending = true
@@ -5163,7 +5208,7 @@ function Library:AddSettingsTab(Window)
             Callback = function(V) Library.IslandNotifications = V end,
         })
     end
-    MenuBox:AddButton({ Text = 'Unload', DoubleClick = true, Func = function() Library:Unload() end })
+    MenuBox:AddButton({ Text = 'Unload', Confirm = 'Unload the UI?', Func = function() Library:Unload() end })
 
     local ConfigBox = Tab:AddRightGroupbox('Configs')
     local NameIn = ConfigBox:AddInput('__ConfigName', { Text = 'Config name', Default = 'default', Placeholder = 'name...', NoConfig = true })
@@ -5185,7 +5230,7 @@ function Library:AddSettingsTab(Window)
         local Ok, R = Library:LoadConfig(List.Value or NameIn.Value)
         Library:Notify(Ok and ('Loaded config "' .. R .. '"') or ('Load failed: ' .. R), 3)
     end })
-    ConfigBox:AddButton({ Text = 'Delete config', DoubleClick = true, Func = function()
+    ConfigBox:AddButton({ Text = 'Delete config', Confirm = 'Delete the selected config?', Func = function()
         local Ok, R = Library:DeleteConfig(List.Value or NameIn.Value)
         Library:Notify(Ok and ('Deleted config "' .. R .. '"') or ('Delete failed: ' .. R), 3)
         RefreshList()

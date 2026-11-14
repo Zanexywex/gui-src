@@ -3674,9 +3674,27 @@ function Library:CreateWindow(...)
     local Nav = Create('ScrollingFrame', {
         BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(10, 80),
         Size = UDim2.new(1, -20, 1, -80 - 34), CanvasSize = UDim2.new(),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 0, Parent = Sidebar,
+        AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollBarThickness = 0, Parent = Sidebar,
     })
-    ListLayout(Nav, 8); Padding(Nav, 1, 1, 1, 1)
+    local NavLayout = ListLayout(Nav, 8); Padding(Nav, 1, 1, 1, 1)
+    local NavRefreshPending = false
+    local function RefreshNav()
+        if NavRefreshPending then return end
+        NavRefreshPending = true
+        task.defer(function()
+            NavRefreshPending = false
+            if not Main.Parent then return end
+            local S = math.max(Scale.Scale, 0.01)
+            local Height = math.ceil(NavLayout.AbsoluteContentSize.Y / S + 2)
+            Nav.CanvasSize = UDim2.fromOffset(0, Height)
+            local Max = math.max(0, Height * S - math.max(0, Nav.AbsoluteWindowSize.Y))
+            Nav.CanvasPosition = Vector2.new(0, math.clamp(Nav.CanvasPosition.Y, 0, Max))
+        end)
+    end
+    Library:GiveSignal(NavLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshNav))
+    Library:GiveSignal(Nav:GetPropertyChangedSignal('AbsoluteSize'):Connect(RefreshNav))
+    Library:GiveSignal(Scale:GetPropertyChangedSignal('Scale'):Connect(RefreshNav))
+    Library:GiveSignal(Main.AncestryChanged:Connect(RefreshNav))
 
     local Footer = Text({
         Text = Config.Footer or '', TextSize = 11, ColorKey = 'DimText',
@@ -4574,14 +4592,24 @@ function Library:CreateWindow(...)
 
         local Items = Blank({ Size = UDim2.new(1, 0, 0, 0), ClipsDescendants = true, LayoutOrder = 2, Parent = Holder })
         local ItemsLayout = ListLayout(Items, 2); Padding(Items, 2, 2, 0, 0)
-        local function FullHeight() return ItemsLayout.AbsoluteContentSize.Y + 4 end
-        ItemsLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-            if Category.Open then Items.Size = UDim2.new(1, 0, 0, FullHeight()) end
-        end)
+        local HeightTween
+        local function FullHeight()
+            if not Main.Parent then return Items.Size.Y.Offset end
+            return math.ceil(ItemsLayout.AbsoluteContentSize.Y / math.max(Scale.Scale, 0.01)) + 4
+        end
+        local function RefreshHeight()
+            if not Category.Open or not Main.Parent then return end
+            if HeightTween then HeightTween:Cancel(); HeightTween = nil end
+            Items.Size = UDim2.new(1, 0, 0, FullHeight())
+        end
+        ItemsLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshHeight)
+        Library:GiveSignal(Scale:GetPropertyChangedSignal('Scale'):Connect(function() task.defer(RefreshHeight) end))
+        Library:GiveSignal(Main.AncestryChanged:Connect(function() task.defer(RefreshHeight) end))
 
         function Category:SetOpen(Bool)
             self.Open = Bool
-            Tween(Items, { Size = UDim2.new(1, 0, 0, Bool and FullHeight() or 0) }, 0.3)
+            if HeightTween then HeightTween:Cancel() end
+            HeightTween = Tween(Items, { Size = UDim2.new(1, 0, 0, Bool and FullHeight() or 0) }, 0.3)
             Arrow:Set(Bool, true)
         end
         Head.MouseButton1Click:Connect(function() Category:SetOpen(not Category.Open) end)

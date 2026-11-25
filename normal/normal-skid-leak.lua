@@ -31,9 +31,9 @@ local Library = {
         Risk       = Color3.fromRGB(255, 85, 85),
         Knob       = Color3.fromRGB(255, 255, 255),
     },
-    Font       = Enum.Font.Gotham,
-    FontMedium = Enum.Font.GothamMedium,
-    FontBold   = Enum.Font.GothamBold,
+    Font       = Enum.Font.BuilderSans,
+    FontMedium = Enum.Font.BuilderSansMedium,
+    FontBold   = Enum.Font.BuilderSansBold,
 
     Registry        = {},
     ThemeCallbacks  = {},
@@ -363,6 +363,99 @@ function Library:DecorateDropdownImages(Dropdown, Images)
     end
     Dropdown:RefreshImages()
     return Dropdown
+end
+
+function Library:VirtualizeDropdown(Dropdown)
+    if Dropdown.ProjectAVirtualized then return Dropdown end
+    local Scroll = Dropdown.ListFrame and Dropdown.ListFrame:FindFirstChildWhichIsA("ScrollingFrame")
+    if not Scroll then return Dropdown end
+    local Search = Dropdown.ListFrame:FindFirstChildWhichIsA("TextBox", true)
+    local Build, RenderValues = Dropdown.BuildDropdownList, self.DropdownRenderValues
+    local Top, Bottom = Instance.new("Frame"), Instance.new("Frame")
+    for _, Spacer in ipairs({ Top, Bottom }) do
+        Spacer.BackgroundTransparency, Spacer.BorderSizePixel, Spacer.Visible = 1, 0, false
+        Spacer.Parent = Scroll
+    end
+    Top.LayoutOrder, Bottom.LayoutOrder = -1, 1000000000
+    local Values, Query, Matches, First, Updating
+    function Dropdown:BuildDropdownList()
+        if Updating then return end
+        local Current = self.Values
+        local Text = Search and Search.Text:lower() or ""
+        if Values ~= Current or Query ~= Text then
+            Values, Query, Matches, First = Current, Text, {}, nil
+            for _, Value in ipairs(Current) do
+                if Text == "" or tostring(Value):lower():find(Text, 1, true) then Matches[#Matches + 1] = Value end
+            end
+            Updating = true
+            Scroll.CanvasPosition = Vector2.new()
+            Updating = false
+        end
+        local Start = math.max(1, math.floor(Scroll.CanvasPosition.Y / 210) * 7 - 6)
+        Start = math.min(Start, math.max(1, #Matches - 20))
+        if First == Start then return end
+        Updating, First = true, Start
+        local Last, Window = math.min(#Matches, Start + 20), {}
+        for Index = Start, Last do Window[#Window + 1] = Matches[Index] end
+        Top.Visible, Bottom.Visible = Start > 1, Last < #Matches
+        Top.Size = UDim2.fromOffset(0, math.max(0, (Start - 1) * 30 - 2))
+        Bottom.Size = UDim2.fromOffset(0, math.max(0, (#Matches - Last) * 30 - 2))
+        if RenderValues then self.RenderValues = Window else self.Values = Window end
+        local Ok, Err = pcall(Build, self)
+        self.RenderValues, self.Values, Updating = nil, Current, false
+        if not Ok then First = nil; error(Err, 0) end
+    end
+    Dropdown.ProjectAVirtualized = true
+    local Connection = Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+        if Dropdown.IsOpen then Dropdown:BuildDropdownList() end
+    end)
+    self:OnUnload(function() Connection:Disconnect() end)
+    return Dropdown
+end
+
+function Library:SetNavigationIcon(Head, Name)
+    local Shapes = {
+        Play = { {3,2,12,7}, {12,7,3,12}, {3,12,3,2} },
+        Automation = { {1,3,13,3}, {1,7,13,7}, {1,11,13,11}, {5,1,5,5}, {10,5,10,9}, {4,9,4,13} },
+        Units = { {2,3,5,3}, {5,3,5,6}, {5,6,2,6}, {2,6,2,3}, {0,12,0,9}, {0,9,7,9}, {7,9,7,12}, {9,5,12,5}, {12,5,12,8}, {12,8,9,8}, {10,10,14,10}, {14,10,14,13} },
+        Rewards = { {1,5,13,5}, {13,5,13,8}, {13,8,1,8}, {1,8,1,5}, {2,8,2,13}, {2,13,12,13}, {12,13,12,8}, {7,5,7,13}, {7,5,3,1}, {3,1,2,3}, {2,3,7,5}, {7,5,11,1}, {11,1,12,3}, {12,3,7,5} },
+        Macro = { {1,2,13,2}, {13,2,13,12}, {13,12,1,12}, {1,12,1,2}, {4,2,4,12}, {10,2,10,12}, {1,5,4,5}, {1,9,4,9}, {10,5,13,5}, {10,9,13,9} },
+        Settings = { {2,4,7,1}, {7,1,12,4}, {12,4,12,10}, {12,10,7,13}, {7,13,2,10}, {2,10,2,4}, {5,5,9,5}, {9,5,9,9}, {9,9,5,9}, {5,9,5,5} },
+    }
+    local Lines = Shapes[Name]
+    if not Lines then return false end
+    local Existing = Head:FindFirstChild("NavigationIcon")
+    if Existing then return true end
+    for _, Child in ipairs(Head:GetChildren()) do
+        if Child:IsA("Frame") and Child.Size == UDim2.fromOffset(11, 11) then Child:Destroy() end
+    end
+    local Holder = Instance.new("Frame")
+    Holder.Name, Holder.BackgroundTransparency = "NavigationIcon", 1
+    Holder.AnchorPoint, Holder.Position, Holder.Size = Vector2.new(0, 0.5), UDim2.new(0, 11, 0.5, 0), UDim2.fromOffset(16, 16)
+    Holder.ZIndex, Holder.Parent = 2, Head
+    for _, Line in ipairs(Lines) do
+        local Dx, Dy = Line[3] - Line[1], Line[4] - Line[2]
+        local Part = Instance.new("Frame")
+        Part.BorderSizePixel, Part.BackgroundColor3 = 0, self.Theme.Accent
+        Part.AnchorPoint, Part.Position = Vector2.new(0.5, 0.5), UDim2.fromOffset((Line[1] + Line[3]) * 0.5 + 1, (Line[2] + Line[4]) * 0.5 + 1)
+        Part.Size, Part.Rotation, Part.ZIndex, Part.Parent = UDim2.fromOffset(math.sqrt(Dx * Dx + Dy * Dy), 1.5), math.deg(math.atan2(Dy, Dx)), 2, Holder
+        self:AddToRegistry(Part, { BackgroundColor3 = "Accent" })
+    end
+    return true
+end
+
+function Library:UpdateNavigationIcons(Window)
+    for _, Label in ipairs(Window.Nav:GetDescendants()) do
+        if Label:IsA("TextLabel") and Label.Parent:IsA("TextButton") then
+            Label.TextSize, Label.TextScaled, Label.TextTransparency = 14, false, 0
+            Label.Font = (Label.Font == Enum.Font.GothamBold or Label.Font == Enum.Font.BuilderSansBold) and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium
+            local Entry = self.Registry[Label]
+            if Entry and Entry.TextColor3 == "DimText" then
+                Entry.TextColor3, Label.TextColor3 = "SubText", self.Theme.SubText
+            end
+            self:SetNavigationIcon(Label.Parent, Label.Text)
+        end
+    end
 end
 
 function Library:SafeCallback(F, ...)
@@ -3188,6 +3281,7 @@ function Funcs:AddSlider(Idx, Info)
     return Slider
 end
 
+Library.DropdownRenderValues = true
 function Funcs:AddDropdown(Idx, Info)
     Info = Info or {}
     if Info.SpecialType == 'Player' then
@@ -3344,7 +3438,7 @@ function Funcs:AddDropdown(Idx, Info)
         local Count = 0
         local T = Library.Theme
 
-        for _, V in ipairs(self.Values) do
+        for _, V in ipairs(self.RenderValues or self.Values) do
             local Name = tostring(V)
             if Query == '' or string.find(string.lower(Name), Query, 1, true) then
                 Count = Count + 1
@@ -3567,6 +3661,7 @@ function Funcs:AddDropdown(Idx, Info)
     AddElement(self, Holder, Info.Text or Idx)
     Options[Idx] = Dropdown
     if Info.ValueImages then Library:DecorateDropdownImages(Dropdown, Info.ValueImages) end
+    Library:VirtualizeDropdown(Dropdown)
     return Dropdown
 end
 
@@ -3690,6 +3785,7 @@ function Library:Toggle(State)
         if not WasAnimating then
             Main.Position, Scale.Scale, Anim.Content.GroupTransparency = DockPosition, Small, 1
             if self.MainStroke then self.MainStroke.Transparency = 1 end
+            for Glow in pairs(self.WindowGlow or {}) do Glow.Transparency = 1 end
         end
         Main.Visible = true
         Animate(Main, { Position = self.HomePosition }, Duration, Enum.EasingStyle.Quint)
@@ -3701,6 +3797,9 @@ function Library:Toggle(State)
         Animate(Scale, { Scale = Small }, Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         Animate(Anim.Content, { GroupTransparency = 1 }, 0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         if self.MainStroke then Animate(self.MainStroke, { Transparency = 1 }, 0.26) end
+    end
+    for Glow, Transparency in pairs(self.WindowGlow or {}) do
+        Animate(Glow, { Transparency = State and Transparency or 1 }, State and 0.24 or 0.26)
     end
     task.delay(Duration, function()
         if self.Unloaded or Anim.Token ~= Token or not Main.Parent then return end
@@ -3746,7 +3845,19 @@ function Library:CreateWindow(...)
         Outer.Position = Config.Position
     end
     Corner(Outer, 12)
-    local MainStroke = Stroke(Outer)
+    Library.WindowGlow = {}
+    for _, Layer in ipairs({ { 4, 0.76 }, { 8, 0.85 }, { 14, 0.91 }, { 22, 0.95 }, { 32, 0.975 }, { 44, 0.987 } }) do
+        local Glow = Create('Frame', {
+            Name = 'WindowGlow', BackgroundTransparency = 1, BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = Outer,
+        })
+        Corner(Glow, 12)
+        local Border = Stroke(Glow, 'Accent', Layer[1])
+        Border.Transparency = Layer[2]
+        Library.WindowGlow[Border] = Layer[2]
+    end
+    local MainStroke = Stroke(Outer, 'Accent', 1.2)
+    MainStroke.Transparency = 0.25
     local Main = Create('Frame', { BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = Outer })
     Themed(Main, { BackgroundColor3 = 'Background' }); Corner(Main, 12)
     local Scale = Create('UIScale', { Parent = Outer })
@@ -4345,7 +4456,7 @@ function Library:CreateWindow(...)
         })
         Themed(Btn, { BackgroundColor3 = 'Hover' }); Corner(Btn, 6)
         local Label = Text({
-            Text = Name, Font = Library.FontMedium, ColorKey = 'DimText',
+            Text = Name, Font = Library.FontMedium, TextSize = 14, ColorKey = 'SubText',
             Position = UDim2.fromOffset(Indent, 0), Size = UDim2.new(1, -Indent - 12, 1, 0), Parent = Btn,
         })
         local Bar = Create('Frame', {
@@ -4402,7 +4513,7 @@ function Library:CreateWindow(...)
             Tween(Bar, { Size = UDim2.fromOffset(3, 0) }, 0.2)
             Tween(Label, { Position = UDim2.fromOffset(Indent, 0) }, 0.25)
             Tween(Btn, { BackgroundTransparency = 1 }, 0.25)
-            SetLabel(Tab.Plated and 'SubText' or 'DimText')
+            SetLabel('SubText')
             if Tab.StyleHide then Tab.StyleHide() end
             if Tab.OnHide then Tab.OnHide() end
         end
@@ -4416,7 +4527,7 @@ function Library:CreateWindow(...)
         end)
         Btn.MouseLeave:Connect(function()
             if Window.ActiveTab ~= Tab then
-                SetLabel(Tab.Plated and 'SubText' or 'DimText')
+                SetLabel('SubText')
                 Tween(Label, { Position = UDim2.fromOffset(Indent, 0) }, 0.2)
                 if Tab.StyleHover then Tab.StyleHover(false) else Tween(Btn, { BackgroundTransparency = 1 }, 0.2) end
             end
@@ -4727,13 +4838,13 @@ function Library:CreateWindow(...)
                 Size = UDim2.fromOffset(14, 14), Image = Icon, Parent = Head,
             })
             Themed(Img, { ImageColor3 = 'Accent' })
-        else
+        elseif not Library:SetNavigationIcon(Head, Name) then
             local Ring = Blank({ AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), Size = UDim2.fromOffset(11, 11), Parent = Head })
             Corner(Ring, 'full'); Stroke(Ring, 'Accent', 1.5)
             local Dot = Create('Frame', { BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(3, 3), Parent = Ring })
             Themed(Dot, { BackgroundColor3 = 'Accent' }); Corner(Dot, 'full')
         end
-        Text({ Text = Name, Font = Library.FontBold, Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -60, 1, 0), Parent = Head })
+        Text({ Text = Name, Font = Library.FontBold, TextSize = 14, Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -60, 1, 0), Parent = Head })
         local Arrow = ChevronIcon(Head, 'SubText', { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) })
         Arrow:Set(true)
 
@@ -4788,7 +4899,7 @@ function Library:CreateWindow(...)
                 Size = UDim2.fromOffset(14, 14), Image = Icon, ZIndex = 2, Parent = Btn,
             })
             Themed(Img, { ImageColor3 = 'Accent' })
-        else
+        elseif not Library:SetNavigationIcon(Btn, Name) then
             local Ring = Blank({ AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), Size = UDim2.fromOffset(11, 11), ZIndex = 2, Parent = Btn })
             Corner(Ring, 'full'); Stroke(Ring, 'Accent', 1.5)
             local Dot = Create('Frame', { BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(3, 3), Parent = Ring })

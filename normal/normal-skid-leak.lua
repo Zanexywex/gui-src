@@ -263,6 +263,108 @@ end
 
 function Library:Create(Class, Props) return Create(Class, Props) end
 
+function Library:DecorateDropdownImages(Dropdown, Images)
+    Dropdown.ValueImages = Images
+    if Dropdown.ImagesDecorated then Dropdown:RefreshImages(); return Dropdown end
+    Dropdown.ImagesDecorated = true
+    local function Create(Class, Props)
+        local Object = Instance.new(Class)
+        for Key, Value in pairs(Props) do Object[Key] = Value end
+        return Object
+    end
+    local function DrawImage(Parent, Label, Value)
+        local Old = Parent:FindFirstChild("DropdownValueImage")
+        if Old then Old:Destroy() end
+        local Padding = Label:FindFirstChild("DropdownImagePadding")
+        if not Padding then Padding = Create("UIPadding", { Name = "DropdownImagePadding", Parent = Label }) end
+        Padding.PaddingLeft = UDim.new(0, 0)
+        if Value == nil then return end
+        local Source = Dropdown.ValueImages
+        local Ok, Asset = pcall(function()
+            return type(Source) == "function" and Source(Value) or type(Source) == "table" and Source[Value]
+        end)
+        if type(setthreadidentity) == "function" then setthreadidentity(8) end
+        if not Ok or not Asset or Asset == "" then return end
+        local Icon
+        if typeof(Asset) == "Instance" and Asset:IsA("GuiObject") then
+            if Asset:IsA("ImageLabel") or Asset:IsA("ImageButton") then
+                Icon = Create("ImageLabel", { Image = Asset.Image, ImageRectOffset = Asset.ImageRectOffset, ImageRectSize = Asset.ImageRectSize, ScaleType = Asset.ScaleType })
+            elseif Asset:IsA("ViewportFrame") then
+                Icon = Create("ViewportFrame", { Ambient = Asset.Ambient, LightColor = Asset.LightColor, LightDirection = Asset.LightDirection })
+                for _, Child in ipairs(Asset:GetChildren()) do
+                    if Child:IsA("Model") or Child:IsA("WorldModel") or Child:IsA("BasePart") then Child:Clone().Parent = Icon end
+                end
+            else Icon = Asset:Clone() end
+            if Icon:IsA("ViewportFrame") then
+                local Camera = Icon:FindFirstChildWhichIsA("Camera", true)
+                if not Camera and Asset.CurrentCamera then Camera = Create("Camera", { CFrame = Asset.CurrentCamera.CFrame, FieldOfView = Asset.CurrentCamera.FieldOfView, Parent = Icon }) end
+                if not Camera then
+                    local Model = Icon:FindFirstChildWhichIsA("Model", true)
+                    if Model then
+                        local Frame, Size = Model:GetBoundingBox()
+                        local Target = Frame.Position + Vector3.new(0, Size.Y * 0.1, 0)
+                        Camera = Create("Camera", { FieldOfView = 35, CFrame = CFrame.lookAt(Target + Vector3.new(0, 0, math.max(Size.X, Size.Y, Size.Z) * 1.8), Target), Parent = Icon })
+                    end
+                end
+                Icon.CurrentCamera = Camera
+            end
+        elseif type(Asset) == "string" or type(Asset) == "number" then
+            local Id = tostring(Asset)
+            Icon = Create("ImageLabel", { Image = Id:match("^%d+$") and "rbxassetid://" .. Id or Id, ScaleType = Enum.ScaleType.Fit })
+        end
+        if not Icon then return end
+        Icon.Name, Icon.BackgroundTransparency, Icon.Visible = "DropdownValueImage", 1, true
+        Icon.AnchorPoint, Icon.Position, Icon.Size = Vector2.new(0, 0.5), UDim2.new(0, 8, 0.5, 0), UDim2.fromOffset(24, 24)
+        Icon.ZIndex, Icon.Active, Icon.Parent = Label.ZIndex, false, Parent
+        for _, Child in ipairs(Icon:GetDescendants()) do if Child:IsA("GuiObject") then Child.ZIndex = Icon.ZIndex; Child.Active = false end end
+        Padding.PaddingLeft = UDim.new(0, 28)
+    end
+    local function Draw(Parent, Label, Value)
+        local Identity = type(getthreadidentity) == "function" and getthreadidentity()
+        if type(setthreadidentity) == "function" then setthreadidentity(8) end
+        local Ok = pcall(DrawImage, Parent, Label, Value)
+        if Identity and type(setthreadidentity) == "function" then setthreadidentity(Identity) end
+        if not Ok then
+            local Icon = Parent:FindFirstChild("DropdownValueImage")
+            if Icon then Icon:Destroy() end
+            local Padding = Label:FindFirstChild("DropdownImagePadding")
+            if Padding then Padding.PaddingLeft = UDim.new(0, 0) end
+        end
+    end
+    local Display, Build = Dropdown.Display, Dropdown.BuildDropdownList
+    local LastValue, HasDisplayed
+    function Dropdown:Display()
+        Display(self)
+        local Value = self.Value
+        if self.Multi then Value = self:GetActiveValues()[1] end
+        if HasDisplayed and LastValue == Value then return end
+        LastValue, HasDisplayed = Value, true
+        local Button = self.ButtonFrame
+        local Label = Button and Button:FindFirstChildWhichIsA("TextLabel")
+        if Label then Draw(Button, Label, Value) end
+    end
+    function Dropdown:BuildDropdownList()
+        Build(self)
+        local Frame = self.ListFrame and self.ListFrame:FindFirstChildWhichIsA("ScrollingFrame")
+        if not Frame then return end
+        local Values = {}
+        for _, Value in ipairs(self.Values) do Values[tostring(Value)] = Value end
+        for _, Item in ipairs(Frame:GetChildren()) do
+            if Item:IsA("TextButton") then
+                local Label = Item:FindFirstChildWhichIsA("TextLabel")
+                if Label then Draw(Item, Label, Values[Label.Text]) end
+            end
+        end
+    end
+    function Dropdown:RefreshImages()
+        HasDisplayed = false
+        self:Display()
+        if self.IsOpen then self:BuildDropdownList() end
+    end
+    Dropdown:RefreshImages()
+    return Dropdown
+end
+
 function Library:SafeCallback(F, ...)
     if type(F) ~= 'function' then return end
     local Ok, Err = pcall(F, ...)
@@ -3147,6 +3249,31 @@ function Funcs:AddDropdown(Idx, Info)
         Themed(Sep, { BackgroundColor3 = 'Stroke' })
     end
 
+    if Dropdown.Multi then
+        local Actions = Create('Frame', {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(6, TopOffset + 2),
+            Size = UDim2.new(1, -12, 0, 26), ZIndex = 22, Parent = ListFrame,
+        })
+        for Index, Name in ipairs({ 'Add All', 'Clear All' }) do
+            local Action = Create('TextButton', {
+                AutoButtonColor = false, Text = Name, Font = Library.FontMedium, TextSize = 12,
+                Position = UDim2.new((Index - 1) * 0.5, Index == 1 and 0 or 3, 0, 0),
+                Size = UDim2.new(0.5, -3, 1, 0), ZIndex = 23, Parent = Actions,
+            })
+            Themed(Action, { BackgroundColor3 = 'Element', TextColor3 = 'Accent' })
+            Corner(Action, 4); Stroke(Action)
+            Action.Activated:Connect(function()
+                local Selected = {}
+                if Index == 1 then
+                    for _, Value in ipairs(Dropdown.Values) do Selected[Value] = true end
+                end
+                Dropdown:SetValue(Selected)
+                Library:AttemptSave()
+            end)
+        end
+        TopOffset = TopOffset + 32
+    end
+
     local Scroll = Create('ScrollingFrame', {
         BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, TopOffset),
         Size = UDim2.new(1, 0, 0, 0), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -3439,6 +3566,7 @@ function Funcs:AddDropdown(Idx, Info)
     end)
     AddElement(self, Holder, Info.Text or Idx)
     Options[Idx] = Dropdown
+    if Info.ValueImages then Library:DecorateDropdownImages(Dropdown, Info.ValueImages) end
     return Dropdown
 end
 
@@ -3503,82 +3631,99 @@ function Library:GetGhost()
 end
 
 function Library:Toggle(State)
-    local Main = self.Main
-    if not Main then return end
+    local Main, Scale = self.Main, self.UIScale
+    if not Main or not Scale or self.Unloaded then return end
     if State == nil then State = not self.Opened end
-    self.Opened = State
-    local Ghost = self:GetGhost()
-    Ghost.Token = Ghost.Token + 1
-    local Token = Ghost.Token
-    local G, T = Ghost.Frame, self.Theme
-    Ghost.Logo.Text = self.Title or ''
-
-    local P, S = Main.AbsolutePosition, Main.AbsoluteSize
-    local WinPos, WinSize = UDim2.fromOffset(P.X + S.X / 2, P.Y + S.Y / 2), UDim2.fromOffset(S.X, S.Y)
-    local IslandPos, IslandSize
+    local Anim = self.WindowAnimation
+    if State == self.Opened and not self.ToggleAnimating then return end
+    if not Anim then
+        local Content = Create('CanvasGroup', {
+            Name = 'WindowAnimation', BackgroundTransparency = 1, BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1), GroupTransparency = 0, Parent = Main,
+        })
+        if self.Body then self.Body.Parent = Content end
+        local Blocker = Create('TextButton', {
+            Text = '', AutoButtonColor = false, BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1), ZIndex = 1000, Visible = false, Parent = Main,
+        })
+        Anim = { Content = Content, Blocker = Blocker, Token = 0, Tweens = {}, ScrollPositions = {},
+            StrokeTransparency = self.MainStroke and self.MainStroke.Transparency or 0 }
+        self.WindowAnimation = Anim
+    end
+    local WasAnimating, WasOpen = self.ToggleAnimating, self.Opened
+    Anim.Token = Anim.Token + 1
+    local Token = Anim.Token
+    for _, T in ipairs(Anim.Tweens) do T:Cancel() end
+    Anim.Tweens = {}
+    if self.Ghost then self.Ghost.Token = self.Ghost.Token + 1; self.Ghost.Frame.Visible = false end
+    if not WasAnimating then
+        self.HomePosition = Main.Position
+        if WasOpen ~= false then
+            Anim.ScrollPositions = {}
+            for _, Item in ipairs(Main:GetDescendants()) do
+                if Item:IsA('ScrollingFrame') then Anim.ScrollPositions[Item] = Item.CanvasPosition / math.max(Scale.Scale, 0.01) end
+            end
+        end
+    end
+    self.Opened, self.ToggleAnimating = State, true
+    self:CloseDropdown()
+    Tooltip.Visible = false
+    Anim.Blocker.Visible = true
+    local Base = self.BaseScale or Scale.Scale
+    local Size = Vector2.new(Main.Size.X.Offset, Main.Size.Y.Offset)
+    local Screen = ScreenGui.AbsoluteSize
+    local Dock, Ratio = Vector2.new(Screen.X * 0.5, Screen.Y + Size.Y * Base * 0.08), 0.12
     local Island = self.IslandApi
     if Island and Island.Visible and Island.Frame.Visible then
-        local IP, IS = Island.Frame.AbsolutePosition, Island.Frame.AbsoluteSize
-        IslandPos, IslandSize = UDim2.fromOffset(IP.X + IS.X / 2, IP.Y + IS.Y / 2), UDim2.fromOffset(IS.X, IS.Y)
+        local P, S = Island.Frame.AbsolutePosition, Island.Frame.AbsoluteSize
+        Dock = P + S / 2
+        Ratio = math.clamp(math.min(S.X / math.max(Size.X * Base, 1), S.Y / math.max(Size.Y * Base, 1)), 0.06, 0.2)
     end
-    local IslandBg = Color3.fromRGB(8, 8, 11)
-
+    local Small = math.max(0.02, Base * Ratio)
+    local Anchor = Main.AnchorPoint
+    local DockPosition = UDim2.fromOffset(Dock.X + Size.X * Small * (Anchor.X - 0.5), Dock.Y + Size.Y * Small * (Anchor.Y - 0.5))
+    local function Animate(Object, Props, Duration, Style, Direction)
+        Anim.Tweens[#Anim.Tweens + 1] = Tween(Object, Props, Duration, Style, Direction)
+    end
+    local Duration = State and 0.48 or 0.34
     if State then
-        G.Visible = true
-        G.Position = IslandPos or WinPos
-        G.Size = IslandSize or UDim2.fromOffset(S.X * 0.92, S.Y * 0.92)
-        G.BackgroundColor3 = IslandPos and IslandBg or T.Background
-        G.BackgroundTransparency = IslandPos and 0 or 1
-        Ghost.Corner.CornerRadius = UDim.new(0, IslandPos and 16 or 12)
-        Ghost.Stroke.Transparency = IslandPos and 0.35 or 1
-        Ghost.Logo.TextTransparency = 1
-        Tween(G, { Position = WinPos, Size = WinSize, BackgroundColor3 = T.Background, BackgroundTransparency = 0 }, 0.45, Enum.EasingStyle.Quint)
-        Tween(Ghost.Corner, { CornerRadius = UDim.new(0, 12) }, 0.45, Enum.EasingStyle.Quint)
-        Tween(Ghost.Stroke, { Transparency = 0 }, 0.3)
-        Tween(Ghost.Logo, { TextTransparency = 0 }, 0.3)
-        task.delay(0.4, function()
-            if Token ~= Ghost.Token then return end
-            if self.Body then self.Body.Parent = Main end
-            Main.Visible = true
-            local W = Library.Window
-            if W and W.ActiveTab and W.ActiveTab.QueueBalance then W.ActiveTab:QueueBalance() end
-            Tween(G, { BackgroundTransparency = 1 }, 0.22)
-            Tween(Ghost.Stroke, { Transparency = 1 }, 0.22)
-            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.15)
-            task.delay(0.24, function()
-                if Token == Ghost.Token then G.Visible = false end
-            end)
-        end)
-    else
-        self:CloseDropdown()
-        Tooltip.Visible = false
-        G.Visible = true
-        G.Position, G.Size = WinPos, WinSize
-        G.BackgroundColor3, G.BackgroundTransparency = T.Background, 0
-        Ghost.Corner.CornerRadius = UDim.new(0, 12)
-        Ghost.Stroke.Transparency = 0
-        Ghost.Logo.TextTransparency = 0
-        Main.Visible = false
-        if self.Body then self.Body.Parent = nil end
-        if IslandPos then
-            local Info = { Position = IslandPos, Size = IslandSize, BackgroundColor3 = IslandBg }
-            Tween(G, Info, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-            Tween(Ghost.Corner, { CornerRadius = UDim.new(0, 16) }, 0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.2)
-            task.delay(0.42, function()
-                if Token ~= Ghost.Token then return end
-                Tween(G, { BackgroundTransparency = 1 }, 0.12)
-                Tween(Ghost.Stroke, { Transparency = 1 }, 0.12)
-            end)
-        else
-            Tween(G, { Size = UDim2.fromOffset(S.X * 0.92, S.Y * 0.92), BackgroundTransparency = 1 }, 0.25)
-            Tween(Ghost.Stroke, { Transparency = 1 }, 0.25)
-            Tween(Ghost.Logo, { TextTransparency = 1 }, 0.15)
+        if not WasAnimating then
+            Main.Position, Scale.Scale, Anim.Content.GroupTransparency = DockPosition, Small, 1
+            if self.MainStroke then self.MainStroke.Transparency = 1 end
         end
-        task.delay(0.56, function()
-            if Token == Ghost.Token then G.Visible = false end
-        end)
+        Main.Visible = true
+        Animate(Main, { Position = self.HomePosition }, Duration, Enum.EasingStyle.Quint)
+        Animate(Scale, { Scale = Base }, Duration, Back)
+        Animate(Anim.Content, { GroupTransparency = 0 }, 0.24, Enum.EasingStyle.Quad)
+        if self.MainStroke then Animate(self.MainStroke, { Transparency = Anim.StrokeTransparency }, 0.24) end
+    else
+        Animate(Main, { Position = DockPosition }, Duration, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        Animate(Scale, { Scale = Small }, Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        Animate(Anim.Content, { GroupTransparency = 1 }, 0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        if self.MainStroke then Animate(self.MainStroke, { Transparency = 1 }, 0.26) end
     end
+    task.delay(Duration, function()
+        if self.Unloaded or Anim.Token ~= Token or not Main.Parent then return end
+        Main.Visible = State
+        Main.Position = self.HomePosition
+        Scale.Scale = self.BaseScale or Base
+        Anim.Content.GroupTransparency = State and 0 or 1
+        Anim.Blocker.Visible = false
+        self.ToggleAnimating = false
+        if self.BaseScale ~= Base then self:UpdateScale() end
+        if State then
+            task.spawn(function()
+                RunService.RenderStepped:Wait()
+                RunService.RenderStepped:Wait()
+                if self.Unloaded or Anim.Token ~= Token then return end
+                for Frame, Position in pairs(Anim.ScrollPositions) do
+                    if Frame.Parent then Frame.CanvasPosition = Position * Scale.Scale end
+                end
+                local W = self.Window
+                if W and W.ActiveTab and W.ActiveTab.QueueBalance then W.ActiveTab:QueueBalance() end
+            end)
+        end
+    end)
     if Island then Island:OnToggle(State) end
 end
 
@@ -3644,8 +3789,10 @@ function Library:CreateWindow(...)
             self.AutoScale = math.clamp(math.min((Screen.X - Margin) / W, (Screen.Y - Margin - Top) / H), Config.MinScale or 0.4, Config.MaxScale or 1)
         end
         self.BaseScale = self.AutoScale * (self.ScalePercent or 1)
-        Scale.Scale = self.BaseScale
-        task.defer(KeepOnScreen)
+        if not self.ToggleAnimating then
+            Scale.Scale = self.BaseScale
+            task.defer(KeepOnScreen)
+        end
     end
     Library:UpdateScale()
     Library:GiveSignal(ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(function() Library:UpdateScale() end))
@@ -5305,6 +5452,10 @@ end
 function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
+    if self.WindowAnimation then
+        self.WindowAnimation.Token = self.WindowAnimation.Token + 1
+        for _, T in ipairs(self.WindowAnimation.Tweens) do T:Cancel() end
+    end
     for _, S in ipairs(self.Signals) do pcall(function() S:Disconnect() end) end
     for _, F in ipairs(self.UnloadCallbacks) do self:SafeCallback(F) end
     ScreenGui:Destroy()
